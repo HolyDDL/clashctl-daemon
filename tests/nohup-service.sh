@@ -158,6 +158,10 @@ test_pid_identity_is_rechecked_before_kill() {
 }
 
 test_privileged_record_is_root_owned_and_authoritative() {
+    if [ "$(id -u)" -ne 0 ]; then
+        printf 'SKIP: privileged process ownership checks require root\n' >&2
+        return 0
+    fi
     local runtime_dir="$WORK_DIR/root-runtime" privileged_bin="$WORK_DIR/privileged-mihomo"
     local record privileged_pid unrecorded_pid expected_argv local_pidfile="$WORK_DIR/user.pid"
     expected_argv=$(_service_process_values_argv_hex "$privileged_bin" 30)

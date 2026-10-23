@@ -10,7 +10,9 @@ CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_TIM
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_TIME CAP_SYS_PTRACE CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE
 Restart=always
 ExecStartPre=/usr/bin/sleep 1s
+ExecStartPre=/usr/bin/env bash placeholder_home/scripts/kernel-start.sh prepare placeholder_home
 ExecStart=placeholder_cmd_full
+ExecStartPost=/usr/bin/env bash placeholder_home/scripts/kernel-start.sh remember placeholder_home
 ExecReload=/bin/kill -HUP $MAINPID
 
 [Install]

@@ -154,7 +154,7 @@ _install_legacy_data() {
     while :; do sleep 0.05; done
 }
 printf '%s\n' "$BASHPID" >"$INTERRUPT_WRAPPER_MARKER"
-main --local
+main --local --service auto
 STUB
 "$interrupt_legacy/bin/mihomo" 30 &
 interrupt_old_pid=$!

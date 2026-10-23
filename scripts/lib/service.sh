@@ -824,6 +824,7 @@ _render_service_unit() {
         -e "s#placeholder_pid_path#$service_pid_path#g" \
         -e "s#placeholder_kernel_name#$CLASHCTL_KERNEL#g" \
         -e "s#placeholder_kernel_desc#$kernel_desc#g" \
+        -e "s#placeholder_home#$CLASHCTL_HOME#g" \
         "$dst"
 }
 

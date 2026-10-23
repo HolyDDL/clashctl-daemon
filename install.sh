@@ -279,7 +279,7 @@ _install_prepare_source() {
         _install_copy_local_source "$script_dir" "$destination" || return 1
     elif command -v git >/dev/null 2>&1; then
         method=git
-        url=https://github.com/nelvko/clashctl.git
+        url=https://github.com/HolyDDL/clashctl-daemon.git
         local -a clone_options=(--depth 1 --branch "$branch")
         [ "${_INSTALL_VERBOSE:-}" = 1 ] || clone_options+=(--quiet)
         [ -z "$proxy" ] || url="${proxy%/}/$url"
@@ -582,7 +582,7 @@ _source_archive() (
     archive=$(mktemp) || return 1
     entries="${archive}.list"
     trap 'rm -f -- "$archive" "$entries"' EXIT
-    url="https://github.com/nelvko/clashctl/archive/refs/heads/${branch}.tar.gz"
+    url="https://github.com/HolyDDL/clashctl-daemon/archive/refs/heads/${branch}.tar.gz"
     [ -z "$proxy" ] || url="${proxy%/}/$url"
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL --connect-timeout 10 --max-time 180 --retry 2 -o "$archive" "$url" || return 1
@@ -711,8 +711,9 @@ _install_next_step() {
     fi
     if [ "${service_manager:-}" = systemd-user ] &&
         ! { declare -F _is_tun_enabled >/dev/null 2>&1 && _is_tun_enabled; }; then
-        printf '\n按需设置（需管理员权限）:\n' >&2
-        printf '  sudo loginctl enable-linger %s  # 开机自启与退出登录后常驻\n' "$(id -un)" >&2
+        printf '\n按需设置（开机自启与退出登录后常驻）:\n' >&2
+        printf '  loginctl enable-linger %q\n' "$(id -un)" >&2
+        printf '  # 是否需要管理员授权取决于系统策略；普通代理的安装与守护无需 sudo。\n' >&2
     fi
 }
 
@@ -729,7 +730,7 @@ _install_complete() {
 
 # 自动模式只为首次安装选型；保存过的后端不随登录会话变化。
 _install_select_service() {
-    local requested=${1:-auto} saved=${2-${INIT_TYPE:-}} answer
+    local requested=${1:-systemd-user} saved=${2-${INIT_TYPE:-}} answer
     _INSTALL_SELECTED_SERVICE=$service_manager
     case $requested in
     nohup) _INSTALL_SELECTED_SERVICE='nohup' ;;
@@ -753,7 +754,8 @@ _install_select_service() {
                 printf '%s\n' \
                     '       服务类型：' \
                     '         1) systemd --user' \
-                    '            开机自启与退出登录后常驻可能需要管理员权限设置。' \
+                    '            无需 sudo，支持登录自启和异常自动重启。' \
+                    '            开机自启与退出登录后常驻需开启 linger，授权要求取决于系统策略。' \
                     '         2) nohup' \
                     '            可后台常驻，无开机自启和异常自动重启。' >&2
                 while :; do
@@ -856,7 +858,7 @@ _install_initialize() {
     [ "${4:-}" != x ] || CLASHCTL_DOWNLOAD_TIMEOUT=$5
     # 参数在 main 中保存，不受 preflight 加载已有 .env 的影响。
     local kernel=${1:-${CLASHCTL_KERNEL:-mihomo}} branch=${2:-${CLASHCTL_UPDATE_BRANCH:-master}}
-    local proxy=${3:-} subscription=${7:-} requested_service=${8:-auto} rc secret shell_backup=''
+    local proxy=${3:-} subscription=${7:-} requested_service=${8:-systemd-user} rc secret shell_backup=''
     _INSTALL_SUBSCRIPTION_RETRY=false
     export -n subscription secret
     export CLASHCTL_KERNEL="$kernel" CLASHCTL_UPDATE_BRANCH="$branch" GH_PROXY="$proxy"
@@ -988,7 +990,7 @@ main() (
     local _INSTALL_DOWNLOAD_FAILED_URL='' _INSTALL_DOWNLOAD_FAILED_TARGET=''
     local home_source='默认值（~/.clashctl）'
     [ -z "${CLASHCTL_HOME:-}" ] || home_source=CLASHCTL_HOME
-    local branch=${CLASHCTL_UPDATE_BRANCH:-} kernel='' subscription='' requested_service=auto
+    local branch=${CLASHCTL_UPDATE_BRANCH:-} kernel='' subscription='' requested_service=systemd-user
     local proxy=${GH_PROXY:-} proxy_set=${GH_PROXY+x} stage='' arg method
     local requested_timeout=${CLASHCTL_DOWNLOAD_TIMEOUT-} timeout_set=${CLASHCTL_DOWNLOAD_TIMEOUT+x}
     local local_source=false script_dir='' existing_kind='' legacy_home='' legacy_kernel='' backup=''
@@ -1074,7 +1076,9 @@ main() (
   --home <路径>           指定安装目录（绝对路径，默认 ~/.clashctl）
   --kernel <内核>         mihomo（默认）或 clash；已有安装不可切换
   --sub <URL>             添加并启用订阅；无现有配置时交互询问
-  --service <方式>        auto（默认）、systemd-user 或 nohup
+  --service <方式>        systemd-user（默认）、auto 或 nohup
+                          默认要求用户级 systemd 可用，不可用时报错
+                          无需 sudo，支持登录自启和异常自动重启
                           auto 沿用已有方式；新装普通用户优先用户级 systemd
 
 下载与更新:
@@ -1095,6 +1099,8 @@ main() (
 --local 需从本地 install.sh 执行，不支持管道安装。
 
 示例:
+  普通用户安装并启用守护（无需 sudo）:
+    bash install.sh --local
   本地源码安装:
     bash install.sh --local --gh-proxy https://gh-proxy.org
   指定分支安装:
@@ -1373,10 +1379,8 @@ HELP
                 printf -v proxy_arg ' --gh-proxy=%q' "$proxy"
                 retry_command+=$proxy_arg
             fi
-            if [ "$requested_service" != auto ]; then
-                printf -v arg ' --service=%q' "$requested_service"
-                retry_command+=$arg
-            fi
+            printf -v arg ' --service=%q' "$requested_service"
+            retry_command+=$arg
             printf '\n安装未完成，已保留目录：%s\n' "$install_home" >&2
             printf '\n重试:\n  %s\n' "$retry_command" >&2
             if [ -n "$_INSTALL_DOWNLOAD_FAILED_URL" ] && [ -n "$_INSTALL_DOWNLOAD_FAILED_TARGET" ]; then

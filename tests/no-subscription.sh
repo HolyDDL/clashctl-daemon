@@ -18,19 +18,10 @@ case $("$TEST_YQ" --version 2>&1) in
 esac
 export TEST_YQ
 export CLASHCTL_HOME="$WORK_DIR/home" CLASHCTL_KERNEL=mihomo CLASHCTL_COLOR=never TERM=dumb
-mkdir -p -- "$CLASHCTL_HOME/data" "$CLASHCTL_HOME/resources"
-# shellcheck source=../scripts/lib/common.sh
-. "$REPO_DIR/scripts/lib/common.sh"
-# shellcheck source=../scripts/lib/config.sh
-. "$REPO_DIR/scripts/lib/config.sh"
-# shellcheck source=../scripts/lib/convert.sh
-. "$REPO_DIR/scripts/lib/convert.sh"
-# shellcheck source=../scripts/cmd/start.sh
-. "$REPO_DIR/scripts/cmd/start.sh"
-# shellcheck source=../scripts/cmd/on.sh
-. "$REPO_DIR/scripts/cmd/on.sh"
-# shellcheck source=../scripts/cmd/sub.sh
-. "$REPO_DIR/scripts/cmd/sub.sh"
+mkdir -p -- "$CLASHCTL_HOME/data" "$CLASHCTL_HOME/resources" "$CLASHCTL_HOME/scripts"
+cp -R -- "$REPO_DIR/scripts/lib" "$REPO_DIR/scripts/cmd" "$CLASHCTL_HOME/scripts/"
+# shellcheck source=../scripts/cmd/clashctl.sh
+. "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"
 BIN_YQ=$TEST_YQ
 BIN_KERNEL="$WORK_DIR/kernel"
 cat >"$BIN_KERNEL" <<'EOF'
@@ -79,14 +70,27 @@ assert_preserved() {
 }
 
 # 缺失主配置也可启动、设置自启和启用终端代理，无需虚构订阅文件或记录。
-clashon >"$WORK_DIR/result" 2>&1 || { cat "$WORK_DIR/result" >&2; fail 'fresh direct startup failed'; }
+clashctl on >"$WORK_DIR/result" 2>&1 || { cat "$WORK_DIR/result" >&2; fail 'fresh direct startup failed'; }
 [ "$KERNEL_RUNNING" = true ] || fail 'direct startup did not start its service'
 [ "$STARTUP_ENABLED" = true ] || fail 'direct startup did not enable its service'
-[ "${http_proxy:-}" = http://127.0.0.1:7890 ] || fail 'direct startup did not expose the local proxy'
+[ "${http_proxy:-}" = http://127.0.0.1:37700 ] || fail 'direct startup did not expose the local proxy'
 [ ! -e "$CLASH_CONFIG_BASE" ] || fail 'direct startup wrote a fake base configuration'
 cmp -s -- "$WORK_DIR/metadata.before" "$CLASH_PROFILES_META" || fail 'direct startup selected a fake subscription'
-assert_runtime '.mode == "direct" and .mixed-port == 7890 and .tun.enable == false' 'default direct runtime is incomplete'
+assert_runtime '.mode == "direct" and .mixed-port == 37700 and .tun.enable == false' 'default direct runtime is incomplete'
 assert_runtime '(.proxies | length) == 0 and (.proxy-groups | length) == 0' 'default direct runtime contains fake nodes'
+
+# 统一配置入口实际执行编辑、合并和重启，不只验证帮助或命令分发。
+cat >"$WORK_DIR/editor" <<'EOF'
+#!/usr/bin/env bash
+"$TEST_YQ" -i '.mixed-port = 37701' "$1"
+EOF
+chmod +x "$WORK_DIR/editor"
+EDITOR="$WORK_DIR/editor" clashctl mixin -e >"$WORK_DIR/result" 2>&1 || {
+    cat "$WORK_DIR/result" >&2
+    fail 'clashctl mixin could not edit and apply the configuration'
+}
+assert_runtime '.mixed-port == 37701' 'clashctl mixin did not apply the edited configuration'
+[ "$KERNEL_RUNNING" = true ] || fail 'clashctl mixin did not restart the service'
 
 : >"$CLASH_CONFIG_BASE"
 _merge_config >"$WORK_DIR/result" 2>&1 || fail 'empty base could not generate a direct runtime'
@@ -145,7 +149,7 @@ cp -- "$REPO_DIR/resources/mixin.yaml.example" "$CLASH_CONFIG_MIXIN"
 [ ! -e "$CLASH_CONFIG_BASE" ] || fail 'subscription write failure left a base configuration'
 cmp -s -- "$WORK_DIR/direct.before" "$CLASH_CONFIG_RUNTIME" || fail 'subscription write failure replaced direct runtime'
 [ -z "$("$TEST_YQ" '.use // ""' "$CLASH_PROFILES_META")" ] || fail 'unwritten subscription was selected'
-_sub_use_locked example >"$WORK_DIR/result" 2>&1 || { cat "$WORK_DIR/result" >&2; fail 'valid subscription could not replace direct mode'; }
+clashctl sub use example >"$WORK_DIR/result" 2>&1 || { cat "$WORK_DIR/result" >&2; fail 'valid subscription could not replace direct mode'; }
 assert_runtime '.mode != "direct" and .proxies[0].name == "example-node"' 'subscription inherited the fallback direct mode'
 [ "$("$TEST_YQ" '.use' "$CLASH_PROFILES_META")" = example ] || fail 'valid subscription was not selected'
 cmp -s -- "$profile" "$CLASH_CONFIG_BASE" || fail 'valid subscription was not installed as the base'

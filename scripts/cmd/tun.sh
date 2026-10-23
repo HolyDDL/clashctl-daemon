@@ -45,7 +45,7 @@ tunoff() {
     service_is_active >&/dev/null || {
         "$BIN_YQ" -i '.tun.enable = false' "$CLASH_CONFIG_MIXIN" || return 1
         _merge_config || return 1
-        service_start || return 1
+        _kernel_start || return 1
         tunstatus >&/dev/null || _okcat "Tun 模式已关闭"
         return 0
     }
@@ -58,14 +58,14 @@ tunon() {
     service_stop >&/dev/null || return 1
     "$BIN_YQ" -i '.tun.enable = true' "$CLASH_CONFIG_MIXIN" || return 1
     _merge_config || return 1
-    service_sudo_start || _errorcat 'Tun 模式开启失败' || return
+    _kernel_start privileged || _errorcat 'Tun 模式开启失败' || return
     sleep 1
     tunstatus >&/dev/null || {
         [ "$CLASHCTL_KERNEL" = 'mihomo' ] && {
             "$BIN_YQ" -i '.tun.auto-redirect = false' "$CLASH_CONFIG_MIXIN" || return 1
             _merge_config || return 1
             service_sudo_stop || return 1
-            service_sudo_start || return 1
+            _kernel_start privileged || return 1
             sleep 1
             tunstatus >&/dev/null || _errorcat 'Tun 模式开启失败, 请检查代理内核日志' || return
             _okcat "Tun 模式已开启" && return 0

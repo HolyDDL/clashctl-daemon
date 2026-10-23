@@ -30,8 +30,8 @@ clashupgrade() {
         esac
     done
 
-    _detect_ext_addr
-    service_is_active >&/dev/null || service_start >/dev/null
+    service_is_active >&/dev/null || clashstart >/dev/null || return 1
+    _detect_ext_addr || return 1
     _ui_emit_fd 1 step "请求内核升级..."
 
     local follow_pid=

@@ -18,66 +18,111 @@ _get_bind_addr() {
 }
 
 _detect_proxy_port() {
-  local mixed_port http_port socks_port
-  IFS='|' read -r mixed_port http_port socks_port < <(
-    "$BIN_YQ" '[.mixed-port // "", .port // "", .socks-port // ""] | join("|")' "$CLASH_CONFIG_RUNTIME"
-  )
-
-  [ -z "$mixed_port" ] && [ -z "$http_port" ] && [ -z "$socks_port" ] && mixed_port=7890
-
-  local count=0
-  local service_active=false
-  service_is_active >&/dev/null && service_active=true
-
-  local entries=(
-    "mixed-port:$mixed_port"
-    "port:$http_port"
-    "socks-port:$socks_port"
-  )
-
-  local entry yaml_key port new_port
-  for entry in "${entries[@]}"; do
-    yaml_key=${entry%%:*}
-    port=${entry#*:}
-
-    [ -n "$port" ] && _is_port_used "$port" && [ "$service_active" != "true" ] && {
-      new_port=$(_get_random_port) || return
-      count=$((count + 1))
-      _ui_warn "端口冲突：[$yaml_key] $port，随机分配 $new_port"
-      "$BIN_YQ" -i ".${yaml_key} = $new_port" "$CLASH_CONFIG_MIXIN"
-    }
-  done
-
-  if [ "$count" -gt 0 ] && ! _merge_config; then
-    _errorcat '代理端口已调整，但运行配置更新失败'
-    return 1
+  local values mixed_port http_port socks_port controller port key entry rc busy conflict=false
+  local -a entries reserved selected=() updates=()
+  _PROXY_PORT_CONFLICT='No'
+  # A running kernel owns its listeners; repeated `on` must not reassign them.
+  service_is_active >/dev/null 2>&1 && return 0
+  values=$("$BIN_YQ" -er 'select(tag == "!!map") |
+    [.mixed-port // 0, .port // 0, .socks-port // 0, .external-controller // ""] | @tsv' \
+    "$CLASH_CONFIG_RUNTIME") || return 1
+  values=${values//$'\t'/$'\x1f'}
+  IFS=$'\x1f' read -r mixed_port http_port socks_port controller <<<"$values"
+  controller=${controller##*:}
+  if [ "$mixed_port" = 0 ] && [ "$http_port" = 0 ] && [ "$socks_port" = 0 ]; then
+    mixed_port=37700
+    updates+=('mixed-port:37700')
   fi
-  return 0
+  entries=("mixed-port:$mixed_port" "port:$http_port" "socks-port:$socks_port")
+  reserved=("$mixed_port" "$http_port" "$socks_port" "$controller")
+  for entry in "${entries[@]}"; do
+    key=${entry%%:*}
+    port=${entry#*:}
+    [[ $port =~ ^[0-9]+$ ]] && [ "${#port}" -le 5 ] && ((10#$port <= 65535)) || {
+      _ui_error "Invalid proxy port: $key"; return 1;
+    }
+    port=$((10#$port))
+    [ "$port" -ne 0 ] || continue
+    rc=0
+    _is_port_used "$port" || rc=$?
+    busy=false
+    case $rc in
+    0) busy=true ;;
+    1) ;;
+    *) _ui_error 'Cannot inspect listening ports (ss/netstat failed).'; return 1 ;;
+    esac
+    for entry in "${selected[@]}"; do [ "$entry" != "$port" ] || busy=true; done
+    [ "$port" != "$controller" ] || busy=true
+    if [ "$busy" = true ]; then
+      local replacement
+      replacement=$(_get_random_port "${reserved[@]}" "${selected[@]}") || return 1
+      if [ "$conflict" = false ]; then _PROXY_PORT_CONFLICT='Yes'; fi
+      _PROXY_PORT_CONFLICT+=" ($key: $port -> $replacement)"
+      conflict=true
+      updates+=("$key:$replacement")
+      port=$replacement
+    fi
+    selected+=("$port")
+  done
+  if [ "${#updates[@]}" -gt 0 ]; then
+    _save_listener_settings "${updates[@]}" || return 1
+  fi
 }
 
+# Validate both files before replacing the user's persisted port selection.
+_save_listener_settings() (
+  local mixin runtime_backup entry key port
+  mixin=$(mktemp "${CLASH_CONFIG_MIXIN}.ports.XXXXXX") || return 1
+  runtime_backup=$(mktemp "${CLASH_CONFIG_RUNTIME}.ports.XXXXXX") || { command rm -f -- "$mixin"; return 1; }
+  trap 'command rm -f -- "$mixin" "$runtime_backup"' EXIT
+  cp -- "$CLASH_CONFIG_MIXIN" "$mixin" && cp -- "$CLASH_CONFIG_RUNTIME" "$runtime_backup" || return 1
+  for entry in "$@"; do
+    key=${entry%%:*}; port=${entry#*:}
+    if [ "$key" = external-controller ]; then
+      CONTROLLER_ADDR="$port" "$BIN_YQ" -i '.external-controller = strenv(CONTROLLER_ADDR)' "$mixin" || return 1
+    else
+      "$BIN_YQ" -i ".\"$key\" = $port" "$mixin" || return 1
+    fi
+  done
+  CLASH_CONFIG_MIXIN="$mixin" _merge_config || return 1
+  if ! command mv -f -- "$mixin" "$CLASH_CONFIG_MIXIN"; then
+    cp -- "$runtime_backup" "$CLASH_CONFIG_RUNTIME" || _ui_error 'Cannot restore the previous runtime configuration.'
+    _ui_error 'Cannot save the selected proxy port.'
+    return 1
+  fi
+)
+
 _detect_ext_addr() {
-  local ext_addr
-  ext_addr=$("$BIN_YQ" '.external-controller // ""' "$CLASH_CONFIG_RUNTIME")
-
-  local ext_ip=${ext_addr%%:*}
-  local ext_port=${ext_addr##*:}
-
+  local ext_addr ext_ip ext_port rc=0
+  EXT_IP='' EXT_PORT=''
+  ext_addr=$("$BIN_YQ" '.external-controller // ""' "$CLASH_CONFIG_RUNTIME") || return 1
+  # An absent controller is valid for proxy-only operation.
+  [ -n "$ext_addr" ] || return 0
+  ext_ip=${ext_addr%:*}
+  ext_port=${ext_addr##*:}
+  [[ $ext_addr == *:* && $ext_port =~ ^[0-9]+$ ]] &&
+    [ "${#ext_port}" -le 5 ] && ((10#$ext_port <= 65535)) || {
+      _ui_error 'Invalid controller address.'; return 1;
+    }
   EXT_IP=$ext_ip
-  EXT_PORT=$ext_port
-  [ "$ext_ip" = '0.0.0.0' ] && EXT_IP=$(_get_local_ip)
-
-  local service_active=false
-  service_is_active >&/dev/null && service_active=true
-
-  _is_port_used "$EXT_PORT" && [ "$service_active" != "true" ] && {
-    local new_port
-    new_port=$(_get_random_port) || return
-    _ui_warn "端口冲突：[external-controller] ${EXT_PORT}，随机分配 $new_port"
-    EXT_PORT=$new_port
-    EXT_ADDR="$ext_ip:$new_port" "$BIN_YQ" -i '.external-controller = env(EXT_ADDR)' "$CLASH_CONFIG_MIXIN"
-    _merge_config
-  }
-  return 0
+  EXT_PORT=$((10#$ext_port))
+  [ "$ext_ip" != '0.0.0.0' ] || EXT_IP=$(_get_local_ip)
+  service_is_active >/dev/null 2>&1 && return 0
+  # Port zero asks the kernel to allocate an ephemeral listener.
+  [ "$EXT_PORT" -ne 0 ] || return 0
+  _is_port_used "$EXT_PORT" || rc=$?
+  case $rc in
+  1) return 0 ;;
+  0) ;;
+  *) _ui_error 'Cannot inspect controller port (ss/netstat failed).'; return 1 ;;
+  esac
+  local new_port proxy_values mixed_port http_port socks_port
+  proxy_values=$("$BIN_YQ" '[.mixed-port // 0, .port // 0, .socks-port // 0] | @tsv' "$CLASH_CONFIG_RUNTIME") || return 1
+  IFS=$'\t' read -r mixed_port http_port socks_port <<<"$proxy_values"
+  new_port=$(_get_random_port "$mixed_port" "$http_port" "$socks_port") || return 1
+  _save_listener_settings "external-controller:$ext_ip:$new_port" || return 1
+  _ui_warn "Controller port conflict: ${EXT_PORT} -> $new_port"
+  EXT_PORT=$new_port
 }
 
 _get_secret() {
@@ -293,13 +338,13 @@ _merge_config_restart() {
 
   # rc=2：合并成功（runtime 已是新配置）但服务重启失败
   if _is_tun_enabled; then
-    service_sudo_start >/dev/null || return 2
+    _kernel_start privileged || return 2
     sleep 1
     tunstatus >&/dev/null || {
       _errorcat "Tun 模式重启失败，请检查代理内核日志"
       return 2
     }
   else
-    service_start >/dev/null || return 2
+    _kernel_start || return 2
   fi
 }

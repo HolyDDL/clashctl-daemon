@@ -41,6 +41,7 @@ assert_selection() {
 }
 
 assert_selection auto '' nohup systemd-user 'new regular user with user manager'
+assert_selection '' '' nohup systemd-user 'default requires a user service'
 USER_MANAGER_AVAILABLE=0 assert_selection auto '' nohup nohup 'new regular user without user manager'
 assert_selection nohup '' nohup nohup 'explicit nohup with user manager'
 assert_selection systemd-user '' nohup systemd-user 'explicit user service'
@@ -54,17 +55,19 @@ ROOT_USER=1 assert_selection auto '' systemd systemd 'root keeps detected system
 ROOT_USER=1 assert_selection nohup '' systemd nohup 'root can explicitly select nohup'
 
 for saved in '' nohup systemd-user; do
-    (
-        USER_MANAGER_AVAILABLE=0 INIT_TYPE=$saved service_manager=${saved:-nohup}
-        if _install_select_service systemd-user >"$WORK_DIR/unavailable.out" 2>&1; then
-            fail 'explicit unavailable user service was accepted'
-        fi
-        grep -q 'systemd' "$WORK_DIR/unavailable.out" || fail 'unavailable manager was not diagnosed'
-    )
+    for requested in '' systemd-user; do
+        (
+            USER_MANAGER_AVAILABLE=0 INIT_TYPE=$saved service_manager=${saved:-nohup}
+            if _install_select_service "$requested" >"$WORK_DIR/unavailable.out" 2>&1; then
+                fail 'unavailable user service was accepted'
+            fi
+            grep -q 'systemd' "$WORK_DIR/unavailable.out" || fail 'unavailable manager was not diagnosed'
+        )
+    done
 done
 (
     ROOT_USER=1 INIT_TYPE='' service_manager=systemd
-    if _install_select_service systemd-user >"$WORK_DIR/root.out" 2>&1; then
+    if _install_select_service >"$WORK_DIR/root.out" 2>&1; then
         fail 'root was allowed to select a user service'
     fi
     grep -Eq '普通用户|root' "$WORK_DIR/root.out" || fail 'root selection error omitted user scope'
@@ -162,7 +165,7 @@ PY
     done
     : >"$installed/.clashctl-incomplete"
     main --home "$installed" >"$WORK_DIR/default.out" 2>&1 || fail 'default service parameter failed'
-    [ "$(cat "$WORK_DIR/parameter-result")" = auto ] || fail 'default service request is not auto'
+    [ "$(cat "$WORK_DIR/parameter-result")" = systemd-user ] || fail 'default service request is not systemd-user'
 
     for invalid_option in '--service' '--service=' '--service=invalid' '--service systemd'; do
         rm -f "$WORK_DIR/parameter-result"
@@ -175,6 +178,17 @@ PY
     done
     main --help >"$WORK_DIR/help.out" 2>&1
     grep -q -- '--service' "$WORK_DIR/help.out" || fail 'install help omitted service selection'
+
+    # 失败重试必须保留显式选择的兼容方式，不能恢复成新的默认后端。
+    _install_initialize() { return 1; }
+    for value in systemd-user auto nohup; do
+        : >"$installed/.clashctl-incomplete"
+        if main --home "$installed" --service "$value" >"$WORK_DIR/retry-$value.out" 2>&1; then
+            fail 'failed initialization was reported successful'
+        fi
+        grep -Fq -- "--service=$value" "$WORK_DIR/retry-$value.out" ||
+            fail "retry lost the requested service: $value"
+    done
 )
 
 # 后端切换失败后，实际 EXIT 清理必须恢复配置、进程和原有自启状态。
@@ -354,7 +368,8 @@ _install_ui_step() { :; }
 _install_ui_ok() { printf '%s\n' "$*"; }
 FIXTURE
 
-for scenario in 'new-auto auto none 1 0 systemd-user 0' 'new-fallback auto none 0 0 nohup 0' \
+for scenario in 'new-default default none 1 0 systemd-user 0' 'default-switch default nohup 1 1 systemd-user 0' \
+    'new-auto auto none 1 0 systemd-user 0' 'new-fallback auto none 0 0 nohup 0' \
     'new-user-sub systemd-user none 1 0 systemd-user 0 yes 0' \
     'new-nohup-sub nohup none 1 0 nohup 0 yes 0' \
     'new-user-tun systemd-user none 1 0 systemd-user 0 no 1' \
@@ -388,7 +403,11 @@ LOADER
         [ "$migrating" -eq 0 ] || backup_arg="$WORK_DIR/legacy-backup"
         subscription_arg=''
         [ "$subscribing" != yes ] || subscription_arg=https://example.invalid/install-subscription
-        _install_initialize mihomo master '' '' '' "$backup_arg" "$subscription_arg" "$requested"
+        if [ "$requested" = default ]; then
+            _install_initialize mihomo master '' '' '' "$backup_arg" "$subscription_arg"
+        else
+            _install_initialize mihomo master '' '' '' "$backup_arg" "$subscription_arg" "$requested"
+        fi
         _install_next_step bash >"$initialize_home/footer" 2>&1
         [ "$migrating" -eq 0 ] || [ "${service_switch_pending:-false}" = false ] ||
             fail 'legacy migration recorded a second service switch transaction'
@@ -411,8 +430,10 @@ LOADER
         grep -Fq '已注册 systemd --user 服务' "$initialize_home/output" || fail 'user installation omitted registration result'
         grep -Fq '已设置登录自启' "$initialize_home/output" || fail 'user installation omitted login startup result'
         ! grep -q 'loginctl enable-linger' "$initialize_home/output" || fail 'linger command appeared before completion'
-        [ "$(grep -c 'sudo loginctl enable-linger' "$initialize_home/footer")" -eq 1 ] || fail 'footer omitted or repeated linger command'
-        grep -q '按需设置（需管理员权限）:' "$initialize_home/footer" || fail 'linger omitted administrator context'
+        [ "$(grep -c '^  loginctl enable-linger ' "$initialize_home/footer")" -eq 1 ] || fail 'footer omitted or repeated linger command'
+        ! grep -q 'sudo loginctl' "$initialize_home/footer" || fail 'footer required sudo for user lingering'
+        grep -q '按需设置（开机自启与退出登录后常驻）:' "$initialize_home/footer" || fail 'linger omitted lifetime context'
+        grep -q '是否需要管理员授权取决于系统策略' "$initialize_home/footer" || fail 'linger omitted system policy context'
     else
         ! grep -q 'loginctl enable-linger' "$initialize_home/footer" || fail 'footer suggested unavailable user autostart'
         ! grep -q '已设置登录自启' "$initialize_home/output" || fail 'TUN installation claimed login autostart'
@@ -455,8 +476,8 @@ for footer in Path(sys.argv[1]).glob('*/footer'):
     commands = ['在当前终端执行', 'clashctl on', 'clashctl ui']
     if '按需添加订阅:' in text:
         commands += ['按需添加订阅:', 'clashctl sub add --use']
-    if '按需设置（需管理员权限）:' in text:
-        commands += ['按需设置（需管理员权限）:', 'sudo loginctl enable-linger']
+    if '按需设置（开机自启与退出登录后常驻）:' in text:
+        commands += ['按需设置（开机自启与退出登录后常驻）:', 'loginctl enable-linger']
     positions = [text.index(command) for command in commands]
     assert positions == sorted(positions), f'footer sections overlap: {footer.parent.name}'
 PY

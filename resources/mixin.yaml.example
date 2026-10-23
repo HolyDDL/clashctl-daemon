@@ -1,4 +1,4 @@
-mixed-port: 7890
+mixed-port: 37700
 
 external-controller: "0.0.0.0:9090"
 external-ui: dist

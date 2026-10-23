@@ -30,6 +30,10 @@ for t in "$TESTS_DIR"/*.sh; do
     printf '%-28s' "$name"
     if output=$(bash "$t" 2>&1); then
         printf 'PASS\n'
+        # Keep permission-dependent coverage gaps visible in successful suites.
+        while IFS= read -r line; do
+            case $line in SKIP:*) printf '    %s\n' "$line" ;; esac
+        done <<<"$output"
         pass=$((pass + 1))
     else
         printf 'FAIL\n'

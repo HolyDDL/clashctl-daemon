@@ -59,8 +59,13 @@ clashnode() {
 ########################################
 
 _node_api_base() {
-    _detect_ext_addr # 填充 EXT_PORT（服务运行时不会触发改端口分支）
-    printf 'http://127.0.0.1:%s' "$EXT_PORT"
+    local controller host
+    controller=$("$BIN_YQ" '.external-controller // ""' "$CLASH_CONFIG_RUNTIME") || return 1
+    [ -n "$controller" ] && [[ $controller == *:* ]] || return 1
+    host=$(_proxy_local_host "${controller%:*}") || return 1
+    local port
+    port=$(_proxy_port "${controller##*:}") || return 1
+    printf 'http://%s:%s' "$host" "$port"
 }
 
 # 统一 curl 封装：--noproxy '*' 避免走系统代理；secret 非空时带 Bearer
@@ -69,8 +74,8 @@ _node_curl() {
     local method=$1 path=$2
     shift 2
     local secret base auth=()
-    base=$(_node_api_base)
-    secret=$(_get_secret)
+    base=$(_node_api_base) || return 1
+    secret=$(_get_secret) || return 1
     [ -n "$secret" ] && auth=(-H "Authorization: Bearer $secret")
     curl -s --noproxy '*' --max-time "${CLASHCTL_API_TIMEOUT:-10}" \
         -X "$method" "${auth[@]}" "${base}${path}" "$@"

@@ -234,6 +234,10 @@ test_install_conflict_and_removal() (
     command grep -Fqx 'WantedBy=default.target' "$target" || fail 'user unit does not use default.target'
     command grep -Fqx "ExecStart=$BIN_KERNEL -d $CLASH_RESOURCES_DIR -f $CLASH_CONFIG_RUNTIME" "$target" ||
         fail 'user unit has the wrong executable or configuration'
+    command grep -Fqx "ExecStartPre=/usr/bin/env bash $CLASHCTL_HOME/scripts/kernel-start.sh prepare $CLASHCTL_HOME" "$target" ||
+        fail 'user unit bypasses startup port checks'
+    command grep -Fqx "ExecStartPost=/usr/bin/env bash $CLASHCTL_HOME/scripts/kernel-start.sh remember $CLASHCTL_HOME" "$target" ||
+        fail 'user unit does not remember the started proxy addresses'
     if command grep -Eq '^(AmbientCapabilities|CapabilityBoundingSet|User|Group)=|multi-user.target|placeholder_' "$target"; then
         fail 'user template retained system-service directives or placeholders'
     fi
@@ -335,6 +339,7 @@ test_disable_tun_after_helper_exit() (
     printf 'tun-enabled\n' >"$CLASH_CONFIG_MIXIN"
     tunstatus() { return 1; }
     _merge_config() { command cp -- "$CLASH_CONFIG_MIXIN" "$CLASH_CONFIG_RUNTIME"; }
+    _kernel_start() { service_start; }
     _okcat() { printf '%s\n' "$*"; }
     tunoff >"$WORK_DIR/tunoff-output" || fail 'could not disable TUN after helper exit'
     command grep -qx tun-disabled "$CLASH_CONFIG_MIXIN" || fail 'tunoff left TUN enabled in mixin'

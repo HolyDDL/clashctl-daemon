@@ -17,23 +17,21 @@ clashstart() {
     fi
     if service_is_active >&/dev/null; then
         # on 会报告终端代理状态；独立执行 start 时仍显示内核状态。
-        [ "${_CLASHCTL_START_FROM_ON:-}" = 1 ] || _ui_ok_out "$CLASHCTL_KERNEL 已运行"
+        [ "${_CLASHCTL_START_FROM_ON:-}" = 1 ] || _ui_ok_out "Kernel already running: $CLASHCTL_KERNEL"
         return 0
     fi
     if [ ! -f "$BIN_KERNEL" ] || [ ! -x "$BIN_KERNEL" ]; then
-        _ui_error "代理内核未安装（$CLASHCTL_KERNEL）"
+        _ui_error "Proxy kernel is not installed: $CLASHCTL_KERNEL"
         _ui_detail '修复' "CLASHCTL_HOME=$CLASHCTL_HOME bash $CLASHCTL_HOME/install.sh"
         return 1
     fi
     _require_base_config || return 1
     _merge_config || return 1
-    _detect_proxy_port || return 1
-    _detect_ext_addr || return 1
-    service_start || return 1
+    _kernel_start || return 1
     service_is_active >&/dev/null || {
-        _ui_fail "$CLASHCTL_KERNEL 启动失败"
+        _ui_fail "Kernel failed to start: $CLASHCTL_KERNEL"
         return 1
     }
     service_enable || return 1
-    _ui_ok_out "$CLASHCTL_KERNEL 已启动"
+    _ui_ok_out "Kernel started: $CLASHCTL_KERNEL"
 }

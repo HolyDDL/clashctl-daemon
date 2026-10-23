@@ -11,6 +11,8 @@ CLASH_DATA_DIR="${CLASHCTL_HOME}/data"
 CLASH_CONFIG_BASE="${CLASH_DATA_DIR}/config.yaml"
 CLASH_CONFIG_MIXIN="${CLASH_DATA_DIR}/mixin.yaml"
 CLASH_CONFIG_RUNTIME="${CLASH_DATA_DIR}/runtime.yaml"
+CLASH_PROXY_LAST="${CLASH_DATA_DIR}/last-proxy.yaml"
+CLASH_PROXY_REPORT="${CLASH_DATA_DIR}/proxy-startup.tsv"
 # 旧 config.sh 的合并回滚临时文件（本次迁移未纳入 config.sh，故保留符号）
 CLASH_CONFIG_TEMP="${CLASH_DATA_DIR}/temp.yaml"
 # 订阅下载/校验失败时保留的调试产物（稳定路径，便于排障）
@@ -112,8 +114,8 @@ _is_port_used() {
         return
     fi
 
-    command -v netstat >/dev/null 2>&1 || return 1
-    sockets=$(netstat -lntu 2>/dev/null) || return 1
+    command -v netstat >/dev/null 2>&1 || return 2
+    sockets=$(netstat -lntu 2>/dev/null) || return 2
     awk -v expected="$port" '
         {
             local_addr = $4
@@ -129,17 +131,23 @@ _is_root() {
 }
 
 _get_random_port() {
-    local fail_count=0
+    local fail_count=0 random_port reserved skip rc
     while [ "$fail_count" -lt 100 ]; do
-        local random_port
-        random_port=$(shuf -i 1024-65535 -n 1)
-        ! _is_port_used "$random_port" && {
-            printf '%s\n' "$random_port"
-            return 0
-        }
+        random_port=$(shuf -i 49152-65535 -n 1) || return 1
         fail_count=$((fail_count + 1))
+        skip=false
+        for reserved in "$@"; do [ "$random_port" != "$reserved" ] || skip=true; done
+        [ "$skip" = false ] || continue
+        rc=0
+        _is_port_used "$random_port" || rc=$?
+        case $rc in
+        0) continue ;;
+        1) printf '%s\n' "$random_port"; return 0 ;;
+        *) _ui_error 'Cannot inspect listening ports (ss/netstat failed).'; return 1 ;;
+        esac
     done
-    _errorcat "未找到可用的代理端口"
+    _ui_error 'No available high port found after 100 attempts.'
+    return 1
 }
 
 _get_local_ip() {
