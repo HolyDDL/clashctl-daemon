@@ -12,7 +12,14 @@ curl -fsSL "${GH_PROXY}https://raw.githubusercontent.com/HolyDDL/clashctl-daemon
   bash -s -- --gh-proxy "$GH_PROXY"
 ```
 
-默认安装到 `~/.clashctl`。安装完成后重新打开终端。
+默认安装到 `~/.clashctl`。安装完成后，按提示在当前终端加载命令（Bash / Zsh）：
+
+```bash
+export CLASHCTL_HOME="$HOME/.clashctl"
+source "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"
+```
+
+Fish 使用安装提示中的 `.fish` 加载命令。也可以重新打开终端。
 
 如果已克隆本仓库，在源码目录执行 `bash install.sh --local` 即可安装。需要自定义位置时使用：
 
@@ -74,8 +81,7 @@ clashctl log -n 50               # 查看最近 50 行日志
 ## 卸载
 
 ```bash
-clashctl off
-bash "$CLASHCTL_HOME/uninstall.sh"
+clashctl uninstall
 ```
 
-卸载会停止服务、取消自启，并删除安装目录及其中的订阅和配置；需要保留的数据请提前备份。
+卸载会停止服务、取消自启，删除安装目录及其中的订阅和配置，并清除当前终端的代理变量和命令；需要保留的数据请提前备份。

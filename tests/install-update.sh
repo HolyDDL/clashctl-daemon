@@ -234,7 +234,7 @@ grep -Fq "安装目录: $CLASHCTL_HOME" "$WORK_DIR/install.out" || fail 'missing
 grep -Fq "安装目录: $CLASHCTL_HOME（CLASHCTL_HOME）" "$WORK_DIR/install.out" || fail 'missing installation directory source'
 grep -Fq '（分支 master）' "$WORK_DIR/install.out" || fail 'missing source branch'
 grep -Fq '在当前终端执行（bash）:' "$WORK_DIR/install.out" || fail 'missing shell activation heading'
-grep -q '^ *source .*\.bashrc *#' "$WORK_DIR/install.out" || fail 'missing shell activation step'
+grep -Fq 'source "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"' "$WORK_DIR/install.out" || fail 'missing shell activation step'
 grep -Fq 'clashctl sub add --use "<URL>"' "$WORK_DIR/install.out" || fail 'missing subscription step'
 grep -q '^ *clashctl on *#' "$WORK_DIR/install.out" || fail 'missing proxy activation step'
 python3 - "$WORK_DIR/install.out" <<'PY'

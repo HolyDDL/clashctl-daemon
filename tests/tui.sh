@@ -93,6 +93,18 @@ tunstatus() { return 1; }
     assert read(mixin)['mode'] == 'direct'
     (home / 'actions').unlink()
 
+    # Repainting an unchanged frame must emit no bytes. Moving selection must
+    # leave the header untouched and never issue a full-screen erase.
+    renderer = "_TUI_FRAME_LINES=(); _TUI_FRAME_WIDTH=0; _TUI_FRAME_HEIGHT=0; _TUI_SCREEN_DIRTY=false; "
+    frame = "frame=$'Header\\n> First\\n  Second'; "
+    result = run(renderer + frame + '_tui_render_frame "$frame" 35 110 >/dev/null; '
+                 '_tui_render_frame "$frame" 35 110')
+    assert result.stdout == '', result.stdout
+    result = run(renderer + frame + '_tui_render_frame "$frame" 35 110 >/dev/null; '
+                 'frame=$\'Header\\n  First\\n> Second\'; _tui_render_frame "$frame" 35 110')
+    assert 'Header' not in result.stdout and '\x1b[2J' not in result.stdout
+    assert '\x1b[2;1H' in result.stdout and '\x1b[3;1H' in result.stdout
+
     # Drive the real UI through a PTY. Verify keyboard navigation, saved ports,
     # start/stop dispatch, normal exit and signal cleanup without host services.
     def session(shell='bash', interrupt=False, proxy=None, language=None):
@@ -178,6 +190,8 @@ tunstatus() { return 1; }
                 expect('Number keys select immediately.')
                 send('qq')
             elif shell == 'bash':
+                # One full idle refresh interval must leave the terminal untouched.
+                assert not select.select([master], [], [], 2.5)[0], 'idle TUI repainted unchanged content'
                 send('4')
                 expect('Proxy ports')
                 expect('Number keys select immediately.')
@@ -248,6 +262,7 @@ tunstatus() { return 1; }
                 if not chunk: break
                 output += chunk
             assert b'\x1b[?1049l' in output, output[-1000:]
+            assert b'\x1b[2J' not in transcript + output, 'TUI cleared the full screen'
             assert termios.tcgetattr(slave) == original, 'terminal mode was not restored'
             if not interrupt:
                 combined = transcript + output

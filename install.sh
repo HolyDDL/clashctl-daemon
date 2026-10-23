@@ -683,24 +683,16 @@ _install_intro() {
 }
 
 _install_next_step() {
-    local shell=$1 rc_var rc_path load_command command_width=32
+    local shell=$1 load_command command_width=32
     case "$shell" in bash | zsh | fish) ;; *) shell=bash ;; esac
-    rc_var=SHELL_RC_${shell^^}
-    rc_path=${!rc_var:-}
-    if [ -f "$rc_path" ]; then
-        printf -v load_command 'source %q' "$rc_path"
-        if [[ $rc_path == "$HOME/"* ]]; then
-            printf -v load_command 'source ~/%q' "${rc_path#"$HOME/"}"
-        fi
-    elif [ "$shell" = fish ]; then
-        printf -v load_command 'set -gx CLASHCTL_HOME %q; source %q' \
-            "$CLASHCTL_HOME" "$CLASHCTL_HOME/scripts/cmd/clashctl.fish"
+    if [ "$shell" = fish ]; then
+        printf -v load_command 'set -gx CLASHCTL_HOME %q; source "$CLASHCTL_HOME/scripts/cmd/clashctl.fish"' "$CLASHCTL_HOME"
     else
-        printf -v load_command 'export CLASHCTL_HOME=%q; source %q' \
-            "$CLASHCTL_HOME" "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"
+        printf -v load_command 'export CLASHCTL_HOME=%q; source "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"' "$CLASHCTL_HOME"
     fi
     [ "${#load_command}" -le "$command_width" ] || command_width=${#load_command}
-    printf '\n在当前终端执行（%s）:\n' "$shell" >&2
+    printf '\n请在当前终端直接执行以下加载命令，或重新打开已配置的终端。\n' >&2
+    printf '在当前终端执行（%s）:\n' "$shell" >&2
     printf '  %-*s  # %s\n' "$command_width" "$load_command" '加载命令' >&2
     printf '  %-*s  # %s\n' "$command_width" 'clashctl tui' '打开可视化管理（Language / 语言：English、简体中文）' >&2
     printf '  %-*s  # %s\n' "$command_width" 'clashctl on' '启用当前终端代理（自动启动内核）' >&2
@@ -1114,6 +1106,7 @@ main() (
   clashctl on                          启动内核并启用当前终端代理
   clashctl off                         关闭终端代理，保留内核运行
   clashctl off --stop                  关闭终端代理并停止内核
+  clashctl uninstall                   卸载并清理当前终端环境
 
 默认代理端口 37700；占用时自动选择空闲高位端口。TUN 需要额外 sudo 授权。
 更多说明: https://github.com/HolyDDL/clashctl-daemon

@@ -51,7 +51,7 @@ main() (
     case ${1:-} in
     -y | --yes) answer=y ;;
     -h | --help)
-        printf '用法: bash uninstall.sh [--yes]\n安装目录：脚本所在的安装目录优先，否则使用 CLASHCTL_HOME 或 ~/.clashctl。\n停止内核，移除服务、Shell 引导和安装目录。\n订阅、自定义配置、内核及日志都会删除，请提前备份。\nTUI 语言偏好也会删除；建议先执行 clashctl off 清理当前终端代理。\n--yes  跳过确认，不跳过安装归属与停止检查。\n'
+        printf '用法: bash uninstall.sh [--yes]\n安装目录：脚本所在的安装目录优先，否则使用 CLASHCTL_HOME 或 ~/.clashctl。\n停止内核，移除服务、Shell 引导和安装目录。\n订阅、自定义配置、内核及日志都会删除，请提前备份。\nTUI 语言偏好也会删除。推荐使用 clashctl uninstall，同时清理当前终端代理变量和命令。\n直接以 bash 运行本脚本后，请按完成提示在父终端执行 unset。\n--yes  跳过确认，不跳过安装归属与停止检查。\n'
         return 0 ;;
     '') ;;
     *) printf '未知参数\n' >&2; return 1 ;;
@@ -172,7 +172,7 @@ main() (
     if [ -e "$cache" ] || [ -L "$cache" ]; then
         _uninstall_ui_log warn "保留了无法确认安装归属的 Fish 代理缓存，请检查后手动清理：$cache" 1
     fi
-    if [ "$proxy_present" = true ]; then
+    if [ "$proxy_present" = true ] && [ "${CLASHCTL_UNINSTALL_SHELL_CLEANUP:-}" != 1 ]; then
         local proxy_vars='http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY no_proxy NO_PROXY'
         printf '\n'
         case $caller_shell in

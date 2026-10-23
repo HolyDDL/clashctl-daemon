@@ -91,6 +91,37 @@ function clashtui --description 'interactive management with terminal proxy sync
     return $tui_rc
 end
 
+function clashuninstall --description 'uninstall and clean the invoking shell'
+    if set -q argv[1]
+        switch $argv[1]
+            case -h --help
+                __clashctl_run clashuninstall $argv
+                return $status
+        end
+    end
+    set -l installation "$CLASHCTL_HOME"
+    set -l commands clashctl
+    for file in "$installation"/scripts/cmd/*.sh
+        set -l name (basename -- "$file" .sh)
+        if test "$name" != clashctl; and string match -rq '^[a-zA-Z0-9_-]+$' -- "$name"
+            set -a commands clash$name
+        end
+    end
+    env CLASHCTL_UNINSTALL_SHELL_CLEANUP=1 bash "$installation/uninstall.sh" $argv
+    set -l uninstall_rc $status
+    if test $uninstall_rc -ne 0
+        return $uninstall_rc
+    end
+    if test -e "$installation"; or test -L "$installation"
+        return 0
+    end
+    set -e http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY no_proxy NO_PROXY
+    set -e CLASHCTL_HOME CLASHCTL_SRC CLASHCTL_KERNEL INIT_TYPE
+    functions -e $commands __clashctl_run __clashctl_state_path
+    printf '当前终端代理与 clashctl 命令已清理。\n'
+    return 0
+end
+
 function clashctl
     set -l sub help
     if set -q argv[1]
@@ -128,7 +159,7 @@ if test -d $CLASHCTL_HOME/scripts/cmd
     for cmd_file in $CLASHCTL_HOME/scripts/cmd/*.sh
         set -l base (basename -- $cmd_file .sh)
         switch $base
-            case clashctl on off tui
+            case clashctl on off tui uninstall
                 continue
         end
         set -l fn clash$base

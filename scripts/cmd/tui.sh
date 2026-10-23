@@ -44,6 +44,8 @@ _tui_session() (
 
 _tui_run() {
     local _TUI_STTY _TUI_CHOICE='' _TUI_VALUE='' _TUI_COLOR=false _TUI_LANGUAGE=en
+    local -a _TUI_FRAME_LINES=()
+    local _TUI_FRAME_WIDTH=0 _TUI_FRAME_HEIGHT=0 _TUI_SCREEN_DIRTY=false
     _tui_load_language
     _TUI_STTY=$(stty -g) || return 1
     _ui_color_enabled 1 && _TUI_COLOR=true
@@ -91,7 +93,6 @@ _tui_header() {
         subscription=$("$BIN_YQ" -r '.use // ""' "$CLASH_PROFILES_META" 2>/dev/null) || subscription=$(_tui_tr 'Cannot read subscription')
     else subscription=''; fi
     [ -n "$subscription" ] || subscription=$(_tui_tr 'No active subscription')
-    printf '\033[H\033[2J'
     if [ "$_TUI_COLOR" = true ]; then printf '\033[1;36m'; fi
     printf '  clashctl daemon  /  %s\n' "$(_tui_tr "$1")"
     [ "$_TUI_COLOR" != true ] || printf '\033[0m'
@@ -106,33 +107,84 @@ _tui_header() {
     printf '\n'
 }
 
+# Render a complete frame in memory; only changed rows reach the terminal.
+_tui_render_frame() {
+    local frame=$1 height=$2 width=$3 output='' row count cursor fragment
+    local -a lines=()
+    mapfile -t lines <<<"$frame"
+    if [ "$width" != "$_TUI_FRAME_WIDTH" ] || [ "$height" != "$_TUI_FRAME_HEIGHT" ]; then
+        _TUI_FRAME_LINES=()
+        _TUI_SCREEN_DIRTY=true
+    fi
+    count=${#lines[@]}
+    for ((row=0; row<count; row++)); do
+        if [ "${lines[row]}" != "${_TUI_FRAME_LINES[row]-}" ] || [ "$row" -ge "${#_TUI_FRAME_LINES[@]}" ]; then
+            printf -v fragment '\033[%d;1H%s\033[K' "$((row + 1))" "${lines[row]}"
+            output+=$fragment
+        fi
+    done
+    for ((row=count; row<${#_TUI_FRAME_LINES[@]}; row++)); do
+        printf -v fragment '\033[%d;1H\033[K' "$((row + 1))"
+        output+=$fragment
+    done
+    if [ -n "$output" ] || [ "$_TUI_SCREEN_DIRTY" = true ]; then
+        # Position below the footer so input/confirmation prompts have a stable home.
+        cursor=$((count + 1))
+        printf -v fragment '\033[%d;1H' "$cursor"
+        output+=$fragment
+        [ "$_TUI_SCREEN_DIRTY" != true ] || output+=$'\033[J'
+        printf '%s' "$output"
+    fi
+    _TUI_FRAME_LINES=("${lines[@]}")
+    _TUI_FRAME_HEIGHT=$height _TUI_FRAME_WIDTH=$width _TUI_SCREEN_DIRTY=false
+}
+
+_tui_invalidate_frame() {
+    _TUI_FRAME_LINES=()
+    _TUI_SCREEN_DIRTY=true
+}
+
+_tui_build_frame() {
+    local header=$1 selected=$2 rows=$3 i
+    shift 3
+    local -a items=("$@")
+    printf '%s\n\n' "$header"
+    if [ "$rows" -lt "$((${#items[@]} + 12))" ]; then
+        _tui_say '  Enlarge the terminal to at least %s rows.' "$((${#items[@]} + 12))"
+    else
+        for ((i=0; i<${#items[@]}; i++)); do
+            if [ "$i" -eq "$selected" ]; then
+                [ "$_TUI_COLOR" != true ] || printf '\033[1;30;46m'
+                printf '  > %d  %s' "$((i + 1))" "$(_tui_tr "${items[i]}")"
+                [ "$_TUI_COLOR" != true ] || printf '\033[0m'
+                printf '\n'
+            else
+                printf '    %d  %s\n' "$((i + 1))" "$(_tui_tr "${items[i]}")"
+            fi
+        done
+    fi
+    printf '\n'
+    _tui_say '  Up/Down or j/k: move   Enter: select   q/Esc: back'
+    _tui_say '  Number keys select immediately.'
+}
+
 _tui_menu() {
-    local title=$1 selected=0 key tail i rows rc
+    local title=$1 selected=0 key tail rows columns rc header='' frame refresh=true
     shift
     local -a items=("$@")
+    printf '\033[?25l'
     while :; do
         rows=$(tput lines 2>/dev/null) || rows=24
-        _tui_header "$title"
-        if [ "$rows" -lt "$((${#items[@]} + 12))" ]; then
-            _tui_say '  Enlarge the terminal to at least %s rows.' "$((${#items[@]} + 12))"
-        else
-            for ((i=0; i<${#items[@]}; i++)); do
-                if [ "$i" -eq "$selected" ]; then
-                    [ "$_TUI_COLOR" != true ] || printf '\033[1;30;46m'
-                    printf '  > %d  %s' "$((i + 1))" "$(_tui_tr "${items[i]}")"
-                    [ "$_TUI_COLOR" != true ] || printf '\033[0m'
-                    printf '\n'
-                else
-                    printf '    %d  %s\n' "$((i + 1))" "$(_tui_tr "${items[i]}")"
-                fi
-            done
+        columns=$(tput cols 2>/dev/null) || columns=80
+        if [ "$refresh" = true ]; then
+            header=$(_tui_header "$title") || return 1
+            refresh=false
         fi
-        printf '\n'; _tui_say '  Up/Down or j/k: move   Enter: select   q/Esc: back'
-        _tui_say '  Number keys select immediately.'; printf '\033[?25l'
+        frame=$(_tui_build_frame "$header" "$selected" "$rows" "${items[@]}") || return 1
+        _tui_render_frame "$frame" "$rows" "$columns"
         rc=0
         IFS= read -rsn1 -t 2 key || rc=$?
-        # Timeouts refresh externally changed service/configuration state.
-        if [ "$rc" -gt 128 ]; then continue; fi
+        if [ "$rc" -gt 128 ]; then refresh=true; continue; fi
         [ "$rc" -eq 0 ] || return 1
         case $key in
         $'\033')
@@ -161,8 +213,10 @@ _tui_pause() {
 
 _tui_action() {
     local rc=0
-    _tui_header 'Action'
-    printf '\033[?25h'
+    local header
+    header=$(_tui_header 'Action')
+    printf '\033[H%s\n\033[J\033[?25h' "$header"
+    _tui_invalidate_frame
     "$@" || rc=$?
     if [ "$rc" -ne 0 ]; then printf '\n'; _tui_say 'Operation failed (exit %d). Review the output above.' "$rc"; fi
     _tui_pause
@@ -171,6 +225,7 @@ _tui_action() {
 
 _tui_input() {
     local prompt=$1 secret=${2:-false}
+    _tui_invalidate_frame
     printf '\033[?25h\n%s (%s): ' "$(_tui_tr "$prompt")" "$(_tui_tr 'empty cancels')"
     _TUI_VALUE=''
     if [ "$secret" = true ]; then IFS= read -rs _TUI_VALUE || return 1; printf '\n'
@@ -180,6 +235,7 @@ _tui_input() {
 
 _tui_confirm() {
     local answer
+    _tui_invalidate_frame
     printf '\033[?25h\n%s [y/N]: ' "$(_tui_tr "$1")"
     IFS= read -r answer || return 1
     case $answer in y | Y) return 0 ;; *) return 1 ;; esac

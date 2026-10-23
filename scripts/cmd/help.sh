@@ -24,6 +24,7 @@ Commands:
   update                更新本 fork 的管理脚本与资源
   upgrade               升级代理内核
   version               查看脚本与内核版本
+  uninstall [--yes]     卸载并清除当前终端代理和命令
 
 Global Options:
   -h, --help            显示此帮助
