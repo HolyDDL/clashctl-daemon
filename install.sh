@@ -1047,15 +1047,15 @@ main() (
             shift
             ;;
         --verbose) _INSTALL_VERBOSE=1 ;;
-        --home=*)
-            install_home=${arg#--home=}
-            home_source=--home
-            [ -n "$install_home" ] || { printf '%s\n' '--home 需要一个绝对路径' >&2; return 1; }
+        --install-dir=*)
+            install_home=${arg#--install-dir=}
+            home_source=--install-dir
+            [ -n "$install_home" ] || { printf '%s\n' '--install-dir 需要一个绝对路径' >&2; return 1; }
             ;;
-        --home)
-            [ "$#" -gt 0 ] && [ -n "$1" ] || { printf '%s\n' '--home 需要一个绝对路径' >&2; return 1; }
+        --install-dir)
+            [ "$#" -gt 0 ] && [ -n "$1" ] || { printf '%s\n' '--install-dir 需要一个绝对路径' >&2; return 1; }
             install_home=$1
-            home_source=--home
+            home_source=--install-dir
             shift
             ;;
         --gh-proxy=*) proxy=${arg#--gh-proxy=}; proxy_set=x ;;
@@ -1073,7 +1073,7 @@ main() (
 
 安装选项:
   --local                 使用本地源码安装，依赖仍按需下载
-  --home <路径>           指定安装目录（绝对路径，默认 ~/.clashctl）
+  --install-dir <路径>    指定安装目录（绝对路径，默认 ~/.clashctl）
   --kernel <内核>         mihomo（默认）或 clash；已有安装不可切换
   --sub <URL>             添加并启用订阅；无现有配置时交互询问
   --service <方式>        systemd-user（默认）、auto 或 nohup
@@ -1148,7 +1148,7 @@ HELP
     fi
     if [ "$local_source" = true ]; then
         case "$install_home/" in
-        "$script_dir/"*) printf '本地安装目录不能位于源码目录内，请通过 --home 指定其他目录\n' >&2; return 1 ;;
+        "$script_dir/"*) printf '本地安装目录不能位于源码目录内，请通过 --install-dir 指定其他目录\n' >&2; return 1 ;;
         esac
     fi
     if [ -e "$install_home" ] || [ -L "$install_home" ]; then
@@ -1224,7 +1224,7 @@ HELP
                 case $existing_kind in
                 legacy-v1 | legacy-v2) legacy_home="$HOME/clashctl" ;;
                 current)
-                    printf '已在旧默认路径发现新版安装，请使用 --home %s 后重试\n' "$HOME/clashctl" >&2
+                    printf '已在旧默认路径发现新版安装，请使用 --install-dir %s 后重试\n' "$HOME/clashctl" >&2
                     return 1
                     ;;
                 *) existing_kind='' ;;
@@ -1368,10 +1368,10 @@ HELP
                 if [ "$retry_timeout" -gt 0 ] && [ "$retry_timeout" -lt 180 ]; then
                     retry_timeout=180
                 fi
-                printf -v retry_command 'CLASHCTL_DOWNLOAD_TIMEOUT=%q bash %q --home %q' \
+                printf -v retry_command 'CLASHCTL_DOWNLOAD_TIMEOUT=%q bash %q --install-dir %q' \
                     "$retry_timeout" "$install_home/install.sh" "$install_home"
             else
-                printf -v retry_command 'bash %q --home %q' "$install_home/install.sh" "$install_home"
+                printf -v retry_command 'bash %q --install-dir %q' "$install_home/install.sh" "$install_home"
             fi
             printf -v branch_arg ' --branch=%q' "$branch"
             retry_command+=$branch_arg

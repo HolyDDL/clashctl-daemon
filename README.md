@@ -28,20 +28,28 @@ curl -fsSL "${GH_PROXY}https://raw.githubusercontent.com/HolyDDL/clashctl-daemon
 ```bash
 git clone https://github.com/HolyDDL/clashctl-daemon.git
 cd clashctl-daemon
-bash install.sh --local --home "$HOME/.clashctl"
+bash install.sh --local
 ```
 
-安装完成后按安装器提示加载 Shell 配置，或重新打开终端，再执行 `clashctl help`。默认安装目录为 `~/.clashctl`；自定义目录使用 `--home`，不要与开发源码目录混用。
+`--local` 表示使用刚克隆的本地源码；缺失的内核等依赖仍会按需联网下载。
+
+需要自定义安装位置时，单独指定绝对路径，例如：
+
+```bash
+bash install.sh --local --install-dir /data/ryw/clashctl
+```
+
+安装完成后按安装器提示加载 Shell 配置，或重新打开终端，再执行 `clashctl help`。默认安装目录为 `~/.clashctl`；自定义目录使用 `--install-dir`，不要与开发源码目录混用。
 
 ### 普通用户安装与守护
 
 在普通用户的登录会话中，从本地源码安装用户级 systemd 服务，无需 `sudo`：
 
 ```bash
-bash install.sh --local --home "$HOME/.clashctl"
+bash install.sh --local
 ```
 
-默认使用 `--service systemd-user`，需要在普通用户的登录会话中运行，并且用户级 systemd 管理器可连接、版本不低于 243。不满足条件时安装报错，不会回退到 `nohup` 或系统级服务。重新运行以上命令也会将当前用户的 `nohup` 安装切换为用户级服务；安装在其他位置时，请通过 `--home` 指定实际目录。
+默认使用 `--service systemd-user`，需要在普通用户的登录会话中运行，并且用户级 systemd 管理器可连接、版本不低于 243。不满足条件时安装报错，不会回退到 `nohup` 或系统级服务。重新运行以上命令也会将当前用户的 `nohup` 安装切换为用户级服务；安装在其他位置时，请通过 `--install-dir` 指定实际目录。
 
 需要保留已有运行方式或兼容无用户级 systemd 的环境时，可显式使用 `--service auto`；仅需后台运行时可显式使用 `--service nohup`。
 
@@ -111,6 +119,32 @@ systemctl --user restart mihomo
 
 使用 Clash 内核时将服务名换成 `clash`。日常优先使用 `clashctl`；直接调用 `systemctl` 不会更新当前终端的代理变量。项目没有单独的 `clashctl restart` 命令，可执行 `clashctl stop && clashctl start`。
 
+## 终端可视化管理
+
+安装并重新打开终端后，执行：
+
+```bash
+clashctl tui
+```
+
+界面使用英文，通过方向键或 `j` / `k` 移动，Enter 进入，也可以按数字直接选择；`q` / Esc 返回，主菜单返回即退出。输入框留空取消操作。支持彩色终端，设置 `NO_COLOR=1` 可关闭颜色。需要交互终端，不额外依赖 Python、dialog 或图形桌面。
+
+界面定期刷新状态。顶部显示内核状态、运行模式、代理端口、登录自启、当前订阅和代理地址。菜单包含：
+
+| 菜单 | 可执行操作 |
+| --- | --- |
+| Kernel & startup | 内核启动、停止、重启，启用或禁用登录自启，查看详细状态 |
+| Subscriptions | 查看、添加并启用、切换、更新全部、删除订阅及操作日志 |
+| Nodes & latency | 进入已有的节点切换和延迟选择界面 |
+| Proxy ports | 修改混合端口、独立 HTTP/SOCKS 端口，查看代理地址 |
+| Proxy settings | Rule/Global/Direct 模式、局域网访问、TUN、完整 Mixin 编辑 |
+| Dashboard & secret | 面板地址、控制接口监听地址、控制接口密钥 |
+| Logs & diagnostics | 最近日志、详细状态、版本及运行配置 |
+
+端口、运行模式、局域网访问、控制接口地址和密钥在临时配置中修改，通过完整配置校验后保存；校验失败保持原配置。内核运行时重启生效，内核停止时仅保存，在下次启动时生效。完整 Mixin 编辑、订阅切换及 TUN 操作沿用对应命令的启停逻辑。更改端口后，每个终端需要执行 `clashctl on` 刷新代理变量。
+
+TUI 管理的是后台内核，当前终端的代理环境仍使用 `clashctl on/off` 管理。禁用登录自启不会停止正在运行的内核；随后使用 `clashctl start` 启动内核会重新启用自启。退出界面会恢复终端显示，后台服务继续按当前状态运行。
+
 ## 快速上手
 
 未添加订阅时可以以直连模式启动；这只提供本地代理入口，不会产生远程代理节点。
@@ -143,6 +177,7 @@ Commands:
   start                 仅启动内核
   stop                  仅停止内核
   status                内核、终端代理状态及代理地址
+  tui                   终端可视化管理
   ui                    面板地址
   sub                   订阅管理
   node                  节点切换

@@ -155,7 +155,7 @@ PY
             : >"$installed/.clashctl-incomplete"
             args=("--service=$value")
             [ "$form" != separate ] || args=(--service "$value")
-            main --home "$installed" "${args[@]}" >"$WORK_DIR/parameter.out" 2>&1 || {
+            main --install-dir "$installed" "${args[@]}" >"$WORK_DIR/parameter.out" 2>&1 || {
                 cat "$WORK_DIR/parameter.out" >&2
                 fail "service parameter rejected: $value ($form)"
             }
@@ -164,13 +164,13 @@ PY
         done
     done
     : >"$installed/.clashctl-incomplete"
-    main --home "$installed" >"$WORK_DIR/default.out" 2>&1 || fail 'default service parameter failed'
+    main --install-dir "$installed" >"$WORK_DIR/default.out" 2>&1 || fail 'default service parameter failed'
     [ "$(cat "$WORK_DIR/parameter-result")" = systemd-user ] || fail 'default service request is not systemd-user'
 
     for invalid_option in '--service' '--service=' '--service=invalid' '--service systemd'; do
         rm -f "$WORK_DIR/parameter-result"
         # shellcheck disable=SC2086  # 故意验证缺失值与分离值参数。
-        if main --home "$installed" $invalid_option >"$WORK_DIR/invalid.out" 2>&1; then
+        if main --install-dir "$installed" $invalid_option >"$WORK_DIR/invalid.out" 2>&1; then
             fail "invalid service parameter was accepted: $invalid_option"
         fi
         [ ! -e "$WORK_DIR/parameter-result" ] || fail 'invalid parameter reached initialization'
@@ -183,7 +183,7 @@ PY
     _install_initialize() { return 1; }
     for value in systemd-user auto nohup; do
         : >"$installed/.clashctl-incomplete"
-        if main --home "$installed" --service "$value" >"$WORK_DIR/retry-$value.out" 2>&1; then
+        if main --install-dir "$installed" --service "$value" >"$WORK_DIR/retry-$value.out" 2>&1; then
             fail 'failed initialization was reported successful'
         fi
         grep -Fq -- "--service=$value" "$WORK_DIR/retry-$value.out" ||

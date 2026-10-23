@@ -329,7 +329,7 @@ if FAIL_PREPARE=1 FAIL_PREPARE_TIMEOUT=1 FAIL_DOWNLOAD_HINT=1 CLASHCTL_HOME="$in
     fail 'component preparation failure was ignored'
 fi
 [ "$(retry_command_from_output "$WORK_DIR/prepare-failed.out")" = \
-    "CLASHCTL_DOWNLOAD_TIMEOUT=0 bash $interrupted_home/install.sh --home $interrupted_home --branch=master --gh-proxy=https://slow.proxy.test --service=auto" ] ||
+    "CLASHCTL_DOWNLOAD_TIMEOUT=0 bash $interrupted_home/install.sh --install-dir $interrupted_home --branch=master --gh-proxy=https://slow.proxy.test --service=auto" ] ||
     fail 'retry hint lost the proxy or unlimited timeout'
 python3 - "$WORK_DIR/prepare-failed.out" "$interrupted_home" <<'PY'
 from pathlib import Path
@@ -473,7 +473,7 @@ for form in missing empty equals next-option; do
     [ ! -e "$invalid_branch_home" ] || fail 'invalid branch created installation directory'
 done
 # 未发布的旧参数直接移除，带有效值时也不能作为兼容别名接受。
-for old_option in --install-dir --subscription; do
+for old_option in --home --subscription; do
     old_value="$WORK_DIR/removed-option-target"
     [ "$old_option" != --subscription ] || old_value=file:///removed-option-sub
     for form in separate equals; do
@@ -488,14 +488,14 @@ for old_option in --install-dir --subscription; do
         [ ! -e "$rejected_home" ] && [ ! -e "$WORK_DIR/removed-option-target" ] || fail 'removed option created installation'
     done
 done
-# --home 两种形式均可用于管道安装，且覆盖右侧 bash 继承的 CLASHCTL_HOME。
+# --install-dir 两种形式均可用于管道安装，且覆盖右侧 bash 继承的 CLASHCTL_HOME。
 for form in separate equals; do
     flag_home="$WORK_DIR/home-$form"
     ignored_home="$WORK_DIR/ignored-home-$form"
     if [ "$form" = separate ]; then
-        home_args=(--home "$flag_home")
+        home_args=(--install-dir "$flag_home")
     else
-        home_args=("--home=$flag_home")
+        home_args=("--install-dir=$flag_home")
     fi
     # shellcheck disable=SC2002  # 验证从 stdin 运行安装器及右侧 bash 的参数。
     cat "$REPO_DIR/install.sh" | CLASHCTL_HOME="$ignored_home" CI=1 \
@@ -508,18 +508,18 @@ for form in separate equals; do
     grep -Fq "安装目录: $flag_home" "$WORK_DIR/home-$form.out" || fail 'explicit home not shown'
 done
 # 缺失值、空值和无效路径都必须在创建安装目录前拒绝。
-for bad_arg in --home --home=; do
+for bad_arg in --install-dir --install-dir=; do
     missing_home="$WORK_DIR/missing-home"
     if CLASHCTL_HOME="$missing_home" bash "$REPO_DIR/install.sh" --service auto "$bad_arg" \
         >"$WORK_DIR/missing-home.out" 2>&1; then
         fail "home accepted missing value: $bad_arg"
     fi
-    grep -q -- '--home' "$WORK_DIR/missing-home.out" ||
+    grep -q -- '--install-dir' "$WORK_DIR/missing-home.out" ||
         fail "home missing value lacked a diagnosis: $bad_arg"
     [ ! -e "$missing_home" ] || fail "missing home value fell back to CLASHCTL_HOME: $bad_arg"
 done
 for invalid_dir in relative-home "$WORK_DIR/invalid install dir"; do
-    if bash "$REPO_DIR/install.sh" --service auto --home "$invalid_dir" \
+    if bash "$REPO_DIR/install.sh" --service auto --install-dir "$invalid_dir" \
         >"$WORK_DIR/invalid-home.out" 2>&1; then
         fail "home accepted invalid path: $invalid_dir"
     fi
@@ -596,10 +596,10 @@ CLASHCTL_HOME="$retry_home" CLASHCTL_DOWNLOAD_TIMEOUT=180 bash "$retry_home/inst
 env -u CLASHCTL_DOWNLOAD_TIMEOUT CLASHCTL_HOME="$retry_home" \
     bash "$retry_home/install.sh" --service auto >"$WORK_DIR/timeout-persisted.out" 2>&1
 [ "$(cat "$retry_home/data/download-timeout")" = 180 ] || fail 'retry did not persist timeout override'
-# 指向已有安装时，--home 也必须决定更新目标，而不是环境变量或已保存的路径。
+# 指向已有安装时，--install-dir 也必须决定更新目标，而不是环境变量或已保存的路径。
 ignored_existing="$WORK_DIR/ignored-existing"
 CLASHCTL_HOME="$ignored_existing" GH_PROXY=https://env.proxy.test \
-    bash "$retry_home/install.sh" --service auto --home "$retry_home" --gh-proxy=https://flag-existing.test \
+    bash "$retry_home/install.sh" --service auto --install-dir "$retry_home" --gh-proxy=https://flag-existing.test \
     >"$WORK_DIR/existing-home.out" 2>&1 ||
     { cat "$WORK_DIR/existing-home.out"; fail 'home could not update existing installation'; }
 [ "$(cat "$retry_home/data/download-options")" = 'clash|master|https://flag-existing.test' ] ||
@@ -882,7 +882,7 @@ CLASHCTL_HOME="$branch_migration_home" CLASHCTL_UPDATE_BRANCH=legacy \
 grep -q '^CLASHCTL_UPDATE_BRANCH=master$' "$branch_migration_home/.env" || fail 'migration did not persist branch flag'
 [ "$(cat "$branch_migration_home/data/download-options")" = 'mihomo|master|https://legacy.proxy.test' ] || fail 'migration lost explicit branch'
 CLASHCTL_HOME="$WORK_DIR/ignored-legacy-v2" bash "$local_source/install.sh" --service auto --kernel clash --local \
-    --home "$legacy_v2" >"$WORK_DIR/legacy-success.out" 2>&1 ||
+    --install-dir "$legacy_v2" >"$WORK_DIR/legacy-success.out" 2>&1 ||
     { cat "$WORK_DIR/legacy-success.out"; fail 'legacy v2 migration failed'; }
 [ ! -e "$WORK_DIR/ignored-legacy-v2" ] || fail 'legacy v2 migration used CLASHCTL_HOME instead of home'
 [ "$(<"$legacy_v2/data/config.yaml")" = 'legacy config' ] || fail 'legacy v2 config was not migrated'

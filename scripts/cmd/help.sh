@@ -12,6 +12,7 @@ Commands:
   start                 仅启动内核
   stop                  仅停止内核
   status                内核、终端代理状态及代理地址
+  tui                   终端可视化管理
   ui                    面板地址
   sub                   订阅管理
   node                  节点切换
@@ -27,6 +28,6 @@ Global Options:
   -h, --help            显示帮助信息
   -v, --version         显示版本信息
 
-For more help on how to use clashctl, head to https://github.com/nelvko/clashctl
+For more help on how to use clashctl, head to https://github.com/HolyDDL/clashctl-daemon
 EOF
 }
