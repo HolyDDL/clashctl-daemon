@@ -177,7 +177,10 @@ PY
         grep -q -- '--service' "$WORK_DIR/invalid.out" || fail 'invalid parameter omitted option name'
     done
     main --help >"$WORK_DIR/help.out" 2>&1
-    grep -q -- '--service' "$WORK_DIR/help.out" || fail 'install help omitted service selection'
+    for text in --service --install-dir 'clashctl tui' English 简体中文 HolyDDL/clashctl-daemon; do
+        grep -Fq -- "$text" "$WORK_DIR/help.out" || fail "install help omitted: $text"
+    done
+    ! grep -Fq -- '--home' "$WORK_DIR/help.out" || fail 'install help retained the removed directory flag'
 
     # 失败重试必须保留显式选择的兼容方式，不能恢复成新的默认后端。
     _install_initialize() { return 1; }

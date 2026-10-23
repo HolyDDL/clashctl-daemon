@@ -17,10 +17,10 @@ clashsecret() {
 
     case $# in
     0)
-        printf 'Web 访问密钥：%s\n' "$(_get_secret)"
+        printf '控制接口密钥：%s\n' "$(_get_secret)"
         ;;
     1)
-        SECRET=$1 "$BIN_YQ" -i '.secret = env(SECRET)' "$CLASH_CONFIG_MIXIN" || {
+        SECRET=$1 "$BIN_YQ" -i '.secret = strenv(SECRET)' "$CLASH_CONFIG_MIXIN" || {
             _failcat "密钥更新失败，请重新输入"
             return 1
         }
@@ -44,13 +44,11 @@ clashsecret() {
 }
 
 secret_help() {
-    cat <<EOF
+    cat <<'EOF'
+用法: clashctl secret [密钥]
 
-- 查看 Web 密钥
-  clashctl secret
-
-- 修改 Web 密钥
-  clashctl secret <new_secret>
-
+无参数查看控制接口密钥；传入新密钥后保存配置并重启生效。
+该密钥用于 Web 面板和内核管理接口，与代理用户名/密码不同。
+也可通过 clashctl tui 的面板与密钥菜单修改，输入时不回显。
 EOF
 }

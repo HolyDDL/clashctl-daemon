@@ -3,7 +3,7 @@
 clashversion() {
     if [ "$#" -gt 0 ]; then
         if [ "$#" -eq 1 ] && { [ "$1" = -h ] || [ "$1" = --help ]; }; then
-            printf '用法: clashctl version（或 clashctl -v / --version）\n'
+            printf '用法: clashctl version（或 clashctl -v / --version）\n显示已安装脚本的提交版本与代理内核版本，不启动内核。\n'
             return 0
         fi
         _ui_error '用法: clashctl version（或 clashctl -v / --version）'

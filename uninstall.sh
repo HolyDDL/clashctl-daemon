@@ -51,7 +51,7 @@ main() (
     case ${1:-} in
     -y | --yes) answer=y ;;
     -h | --help)
-        printf '用法: bash uninstall.sh [--yes]\n安装目录：脚本所在的安装目录优先，否则使用 CLASHCTL_HOME 或 ~/.clashctl。\n停止内核，移除服务、Shell 引导和安装目录。\n订阅、自定义配置、内核及日志都会删除，请提前备份。\n--yes  跳过确认，不跳过安装归属与停止检查。\n'
+        printf '用法: bash uninstall.sh [--yes]\n安装目录：脚本所在的安装目录优先，否则使用 CLASHCTL_HOME 或 ~/.clashctl。\n停止内核，移除服务、Shell 引导和安装目录。\n订阅、自定义配置、内核及日志都会删除，请提前备份。\nTUI 语言偏好也会删除；建议先执行 clashctl off 清理当前终端代理。\n--yes  跳过确认，不跳过安装归属与停止检查。\n'
         return 0 ;;
     '') ;;
     *) printf '未知参数\n' >&2; return 1 ;;

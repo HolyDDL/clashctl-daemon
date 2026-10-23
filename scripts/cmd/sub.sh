@@ -1199,6 +1199,8 @@ Commands:
   rename [旧名称] [新名称]  重命名订阅
   log                   查看订阅操作日志
 
+启用订阅后可执行 clashctl node use 选择策略组和节点。
+TUI 的订阅菜单也支持订阅切换、节点选择和延迟显示。
 查看子命令选项，例如：clashctl sub add -h
 
 EOF

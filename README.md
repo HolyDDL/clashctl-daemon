@@ -30,7 +30,7 @@ bash install.sh --local --install-dir /data/clashctl
 clashctl tui
 ```
 
-使用方向键选择、Enter 进入，`q` 或 Esc 返回。也可以按菜单中的数字直接选择。
+在 **Language / 语言** 中选择 **English** 或 **简体中文**，选择后立即生效并自动保存。使用方向键选择、Enter 进入，`q` 或 Esc 返回，也可以按数字直接选择。
 
 常用操作：
 

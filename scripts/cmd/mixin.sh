@@ -32,18 +32,14 @@ clashmixin() {
 
 mixin_help() {
     cat <<EOF
+用法: clashctl mixin [-e|-r|-c]
 
-- 查看 Mixin 配置：$CLASH_CONFIG_MIXIN
-  clashctl mixin
+  无选项    查看 Mixin 用户配置：$CLASH_CONFIG_MIXIN
+  -e        使用 EDITOR（默认 vim）编辑；校验成功后重启生效
+  -r        查看合并后的运行配置：$CLASH_CONFIG_RUNTIME
+  -c        查看当前订阅基础配置：$CLASH_CONFIG_BASE
 
-- 编辑 Mixin 配置
-  clashctl mixin -e
-
-- 查看原始订阅配置：$CLASH_CONFIG_BASE
-  clashctl mixin -c
-
-- 查看运行时配置：$CLASH_CONFIG_RUNTIME
-  clashctl mixin -r
-
+端口、运行模式等常用设置也可通过 clashctl tui 调整。
+端口改变后，请在各终端执行 clashctl on 刷新代理变量。
 EOF
 }

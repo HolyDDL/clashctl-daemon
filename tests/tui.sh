@@ -95,7 +95,7 @@ tunstatus() { return 1; }
 
     # Drive the real UI through a PTY. Verify keyboard navigation, saved ports,
     # start/stop dispatch, normal exit and signal cleanup without host services.
-    def session(shell='bash', interrupt=False, proxy=None):
+    def session(shell='bash', interrupt=False, proxy=None, language=None):
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 35, 110, 0, 0))
         original = termios.tcgetattr(slave)
@@ -129,8 +129,44 @@ tunstatus() { return 1; }
             output = output.split(token, 1)[1]
         def send(keys): os.write(master, keys.encode())
         try:
-            expect('Number keys select immediately.')
-            if interrupt:
+            saved_language = home / 'data/tui-language'
+            chinese = saved_language.exists() and saved_language.read_text().strip() == 'zh-CN'
+            expect('按数字键直接选择。' if chinese else 'Number keys select immediately.')
+            if language is not None:
+                if language == 'view-zh':
+                    assert chinese
+                    send('1')
+                    expect('启动内核')
+                    expect('按数字键直接选择。')
+                    send('q')
+                    expect('按数字键直接选择。')
+                    send('q')
+                else:
+                    send('9')
+                    expect('Language / 语言')
+                    expect('简体中文')
+                    expect('按数字键直接选择。' if chinese else 'Number keys select immediately.')
+                    send('2' if language == 'zh-CN' else '1')
+                    if language == 'zh-CN':
+                        expect('内核与自启')
+                        expect('按数字键直接选择。')
+                        send('4')
+                        expect('代理端口')
+                        expect('按数字键直接选择。')
+                        send('1')
+                        expect('留空取消')
+                        send('not-a-port\n')
+                        expect('端口必须是 0 到 65535 之间的整数。')
+                        expect('按任意键返回')
+                        send('x')
+                        expect('按数字键直接选择。')
+                        send('q')
+                        expect('按数字键直接选择。')
+                    else:
+                        expect('Kernel & startup')
+                        expect('Number keys select immediately.')
+                    send('q')
+            elif interrupt:
                 os.killpg(process.pid, signal.SIGTERM)
             elif proxy is not None:
                 send('8')
@@ -257,5 +293,24 @@ tunstatus() { return 1; }
         session(shell, proxy='failed-stop')
         assert (home / 'running').exists()
         (home / 'fail-stop').unlink()
+    run('clashctl secret true')
+    assert read(mixin)['secret'] == 'true'
+    run('clashctl secret 012345')
+    assert read(mixin)['secret'] == '012345'
+    language_file = home / 'data/tui-language'
+    for shell in ('bash', 'zsh', 'fish'):
+        language_file.write_text('en\n')
+        session(shell, language='zh-CN')
+        assert language_file.read_text() == 'zh-CN\n'
+        assert language_file.stat().st_mode & 0o777 == 0o600
+        session(shell, language='view-zh')
+        session(shell, language='en')
+        assert language_file.read_text() == 'en\n'
+    (home / 'data/profiles.yaml').write_text('use: direct\n')
+    result = run('_TUI_COLOR=false; _TUI_LANGUAGE=zh-CN; _tui_header test')
+    assert '当前订阅：direct' in result.stdout
+    language_file.write_text('$(touch "$CLASHCTL_HOME/injected")\n')
+    assert run('_tui_load_language; printf "%s" "$_TUI_LANGUAGE"').stdout == 'en'
+    assert not (home / 'injected').exists()
 print('tui: ok')
 PY

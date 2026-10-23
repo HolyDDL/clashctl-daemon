@@ -702,13 +702,15 @@ _install_next_step() {
     [ "${#load_command}" -le "$command_width" ] || command_width=${#load_command}
     printf '\n在当前终端执行（%s）:\n' "$shell" >&2
     printf '  %-*s  # %s\n' "$command_width" "$load_command" '加载命令' >&2
-    printf '  %-*s  # %s\n' "$command_width" 'clashctl on' '启用当前终端代理' >&2
+    printf '  %-*s  # %s\n' "$command_width" 'clashctl tui' '打开可视化管理（Language / 语言：English、简体中文）' >&2
+    printf '  %-*s  # %s\n' "$command_width" 'clashctl on' '启用当前终端代理（自动启动内核）' >&2
     if service_is_active >/dev/null 2>&1; then
         printf '  %-*s  # %s\n' "$command_width" 'clashctl ui' '查看面板地址' >&2
     fi
     if [ ! -s "$CLASH_CONFIG_BASE" ] || [ "${_INSTALL_SUBSCRIPTION_RETRY:-false}" = true ]; then
         printf '\n按需添加订阅:\n  %s\n' 'clashctl sub add --use "<URL>"' >&2
     fi
+    printf '\n日常操作: clashctl status 查看状态；clashctl off 关闭终端代理；clashctl off --stop 同时停止内核。\n' >&2
     if [ "${service_manager:-}" = systemd-user ] &&
         ! { declare -F _is_tun_enabled >/dev/null 2>&1 && _is_tun_enabled; }; then
         printf '\n按需设置（开机自启与退出登录后常驻）:\n' >&2
@@ -1067,18 +1069,18 @@ main() (
             ;;
         -h | --help)
             cat <<'HELP'
-安装或更新 clashctl
+安装或更新 clashctl-daemon（当前 fork）
 
 用法: bash install.sh [选项]
 
 安装选项:
   --local                 使用本地源码安装，依赖仍按需下载
-  --install-dir <路径>    指定安装目录（绝对路径，默认 ~/.clashctl）
+  --install-dir <路径>    自定义安装位置（绝对路径，默认 ~/.clashctl）
   --kernel <内核>         mihomo（默认）或 clash；已有安装不可切换
   --sub <URL>             添加并启用订阅；无现有配置时交互询问
   --service <方式>        systemd-user（默认）、auto 或 nohup
-                          默认要求用户级 systemd 可用，不可用时报错
-                          无需 sudo，支持登录自启和异常自动重启
+                          默认要求用户级 systemd >= 243 且可连接，不可用时报错
+                          使用普通用户会话，无需 sudo，支持登录自启和异常自动重启
                           auto 沿用已有方式；新装普通用户优先用户级 systemd
 
 下载与更新:
@@ -1099,14 +1101,22 @@ main() (
 --local 需从本地 install.sh 执行，不支持管道安装。
 
 示例:
-  普通用户安装并启用守护（无需 sudo）:
+  从本地源码安装到默认位置:
     bash install.sh --local
-  本地源码安装:
-    bash install.sh --local --gh-proxy https://gh-proxy.org
-  指定分支安装:
-    bash install.sh --branch install-update --gh-proxy https://gh-proxy.org
+  自定义安装位置（需当前用户可写，且与源码目录分开）:
+    bash install.sh --local --install-dir /data/clashctl
+  指定更新分支:
+    bash install.sh --branch master
 
-更多说明: https://github.com/nelvko/clashctl/wiki
+安装后重新打开终端，或按完成提示加载命令:
+  clashctl tui                         可视化管理，支持 English / 简体中文
+  clashctl sub add --use "<订阅链接>"   添加并启用订阅
+  clashctl on                          启动内核并启用当前终端代理
+  clashctl off                         关闭终端代理，保留内核运行
+  clashctl off --stop                  关闭终端代理并停止内核
+
+默认代理端口 37700；占用时自动选择空闲高位端口。TUN 需要额外 sudo 授权。
+更多说明: https://github.com/HolyDDL/clashctl-daemon
 HELP
             return 0 ;;
         *) printf '未知安装参数\n' >&2; return 1 ;;

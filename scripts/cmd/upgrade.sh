@@ -68,6 +68,8 @@ upgrade_help() {
 Usage:
   clashctl upgrade [OPTIONS]
 
+升级代理内核，需要时先启动内核。更新本 fork 管理脚本请使用 clashctl update。
+
 Options:
   -v, --verbose       输出内核升级日志
   -r, --release       升级至稳定版

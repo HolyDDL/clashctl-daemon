@@ -75,16 +75,14 @@ tunon() {
 }
 
 tun_help() {
-    cat <<EOF
+    cat <<'EOF'
+用法: clashctl tun [on|off]
 
-- 查看 Tun 状态
-  clashctl tun
+  无参数    查看实际 TUN 状态
+  on        通过 sudo 启动特权内核并启用 TUN
+  off       关闭 TUN，恢复普通代理内核
 
-- 开启 Tun 模式
-  clashctl tun on
-
-- 关闭 Tun 模式
-  clashctl tun off
-
+普通 HTTP/SOCKS 代理无需 sudo。TUN 会更改系统路由，需要管理员授权。
+用户级服务不会在登录时自动启动无权限的 TUN 副本。
 EOF
 }

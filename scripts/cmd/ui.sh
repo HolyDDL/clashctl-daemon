@@ -4,6 +4,13 @@
 declare -F _clashctl_run_in_bash >/dev/null 2>&1 || . "${BASH_SOURCE[0]%/*}/../lib/shell.sh"
 
 clashui() {
+    case ${1:-} in
+    -h | --help)
+        printf '用法: clashctl ui\n首次使用时准备 Web 面板，必要时启动内核，显示面板访问地址。\n终端可视化管理请使用 clashctl tui。\n'
+        return 0 ;;
+    '') [ "$#" -eq 0 ] || return 1 ;;
+    *) _ui_error '用法: clashctl ui'; return 1 ;;
+    esac
     if ! _clashctl_in_bash; then
         _clashctl_run_in_bash clashui
         return

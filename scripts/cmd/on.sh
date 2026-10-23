@@ -18,13 +18,17 @@ clashon() {
 on_help() {
     cat <<EOF
 
-clashctl on - 启用当前终端代理，内核未运行时自动启动
+clashctl on - 启用当前终端代理，内核未运行时先启动
 
 Usage:
   clashctl on [OPTIONS]
 
 Options:
   -h, --help  显示帮助信息
+
+仅影响当前终端及其后续子进程。端口改变后重新执行本命令。
+关闭代理使用 clashctl off，同时停止内核使用 clashctl off --stop。
+也可使用 clashctl tui 中的当前终端代理菜单。
 
 EOF
 }

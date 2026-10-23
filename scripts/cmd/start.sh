@@ -6,7 +6,7 @@ declare -F _clashctl_run_in_bash >/dev/null 2>&1 || . "${BASH_SOURCE[0]%/*}/../l
 clashstart() {
     case ${1:-} in
     -h | --help)
-        printf '用法: clashctl start\n启动内核，不修改当前终端代理环境；已运行时保持原状。\n'
+        printf '用法: clashctl start\n启动内核，不修改当前终端代理环境；已运行时保持原状。\n启动前检查已保存的端口，占用时自动更换；成功后启用登录自启。\n需要当前终端使用代理时，请执行 clashctl on。\n'
         return 0 ;;
     '') ;;
     *) _ui_fail '用法: clashctl start'; return 1 ;;

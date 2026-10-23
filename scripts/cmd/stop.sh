@@ -6,7 +6,7 @@ declare -F _clashctl_run_in_bash >/dev/null 2>&1 || . "${BASH_SOURCE[0]%/*}/../l
 clashstop() {
     case ${1:-} in
     -h | --help)
-        printf '用法: clashctl stop\n停止内核，不修改终端代理环境；会影响所有使用此内核的客户端。\n'
+        printf '用法: clashctl stop\n停止内核，不修改终端代理环境；会影响所有使用此内核的客户端。\n同时清除当前终端代理变量，请使用 clashctl off --stop。\n停止内核不会取消登录自启，可在 clashctl tui 中单独设置。\n'
         return 0 ;;
     '') ;;
     *) _ui_fail '用法: clashctl stop'; return 1 ;;

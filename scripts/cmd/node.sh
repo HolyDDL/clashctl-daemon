@@ -25,7 +25,7 @@ clashnode() {
     fi
 
     service_is_active >&/dev/null || {
-        _failcat "$CLASHCTL_KERNEL 未运行，请先执行 clashctl on"
+        _failcat "$CLASHCTL_KERNEL 未运行，请先执行 clashctl start"
         return 1
     }
 
@@ -1107,6 +1107,8 @@ Usage:
   clashctl node COMMAND [选项...]
 
 不指定 COMMAND 时进入交互式节点切换（等价于 node use）。
+操作当前启用订阅的策略组和节点，要求内核正在运行。
+也可在 clashctl tui 的订阅菜单选择节点。
 选项由各子命令自行解析，需写在子命令之后。
 
 Commands:
