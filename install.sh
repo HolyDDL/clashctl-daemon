@@ -609,7 +609,7 @@ _source_archive() (
 
 _source_validate() {
     local directory=$1 file relative
-    for file in .env.example install.sh uninstall.sh scripts/preflight.sh scripts/lib/operation-lock.sh scripts/lib/install-maintenance.sh scripts/cmd/clashctl.sh scripts/cmd/update.sh; do
+    for file in .env.example install.sh uninstall.sh scripts/preflight.sh scripts/lib/operation-lock.sh scripts/lib/install-maintenance.sh scripts/cmd/clashctl.sh scripts/cmd/update.sh scripts/cmd/tui.sh scripts/lib/tui-i18n.sh; do
         if [ ! -f "$directory/$file" ] || [ -L "$directory/$file" ]; then
             printf '源码不兼容：缺少必需文件 %s\n' "$file" >&2
             return 1

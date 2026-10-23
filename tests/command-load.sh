@@ -51,7 +51,7 @@ for word in on off start stop status tui ui sub node update; do
 done
 
 # 4) 声明支持 -h/--help 的子命令，其 --help 不应因缺依赖而崩溃。
-#    其余命令（如 log）本就没有 help 分支，不在此断言。
+#    ui/log 帮助也必须保持只读，不能触发组件准备。
 #    -h 是最轻的路径，能在无内核/无配置下验证函数体前半段接线正确。
 for sub in on off start stop status tui ui log sub node tun mixin secret upgrade update version; do
     rc=0
@@ -195,5 +195,57 @@ for shell in bash zsh fish; do
     command_in_shell "$shell" -v >"$WORK_DIR/version.stdout" 2>"$WORK_DIR/version.stderr" || rc=$?
     [ "$rc" -eq 23 ] || fail "$shell hid kernel version failure: $rc"
 done
+
+# Every shell must work when an allowed custom path contains the loader name.
+original_home_dir=$HOME_DIR
+for directory in clashctl.test clashctl.sh .clashctl.backup; do
+    HOME_DIR="$WORK_DIR/$directory"
+    mkdir -p "$HOME_DIR"
+    cp -r "$original_home_dir/scripts" "$HOME_DIR/"
+    printf 'CLASHCTL_KERNEL=mihomo\nINIT_TYPE=nohup\n' >"$HOME_DIR/.env"
+    for shell in bash zsh fish; do
+        output=$(command_in_shell "$shell" tui --help) || fail "$shell cannot load TUI from $directory"
+        [[ $output == *'clashctl tui'* && $output == *'English'* ]] || fail "$shell TUI help missing in $directory"
+    done
+done
+HOME_DIR=$original_home_dir
+
+# An already loaded dispatcher can discover a new command without a new shell.
+for shell in bash zsh; do
+    code='. "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"; unset -f clashtui; clashctl tui --help'
+    [ "$shell" != zsh ] || code='. "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"; unfunction clashtui; clashctl tui --help'
+    output=$(CLASHCTL_HOME="$HOME_DIR" "$shell" -c "$code") || fail "$shell stale dispatcher cannot reload TUI"
+    [[ $output == *'clashctl tui'* ]] || fail "$shell stale dispatcher omitted TUI help"
+done
+
+output=$(CLASHCTL_HOME="$HOME_DIR" fish --no-config -c 'source "$CLASHCTL_HOME/scripts/cmd/clashctl.fish"; functions -e clashtui; clashctl tui --help') || fail 'fish stale dispatcher cannot reload TUI'
+[[ $output == *'clashctl tui'* ]] || fail 'fish stale dispatcher omitted TUI help'
+
+# Broken command files must fail loading instead of leaving a partially loaded CLI.
+printf 'return 73\n' >"$HOME_DIR/scripts/cmd/zz-broken.sh"
+for shell in bash zsh; do
+    rc=0
+    CLASHCTL_HOME="$HOME_DIR" "$shell" -c '. "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"' || rc=$?
+    [ "$rc" -eq 1 ] || fail "$shell hid a command load error: $rc"
+done
+rm "$HOME_DIR/scripts/cmd/zz-broken.sh"
+
+# Incomplete packages must be rejected before an installation/update is applied.
+(
+    package="$WORK_DIR/package"
+    mkdir "$package"
+    cp -r "$REPO_DIR/scripts" "$package/"
+    cp "$REPO_DIR/.env.example" "$REPO_DIR/install.sh" "$REPO_DIR/uninstall.sh" "$package/"
+    . "$REPO_DIR/install.sh"
+    _source_validate "$package" || fail 'complete source package was rejected'
+    for required in scripts/cmd/tui.sh scripts/lib/tui-i18n.sh; do
+        rm "$package/$required"
+        if _source_validate "$package" >"$WORK_DIR/incomplete.out" 2>&1; then
+            fail "incomplete source package was accepted: $required"
+        fi
+        grep -Fq "$required" "$WORK_DIR/incomplete.out" || fail 'missing TUI file had no diagnosis'
+        cp "$REPO_DIR/$required" "$package/$required"
+    done
+)
 
 printf 'command-load: ok\n'

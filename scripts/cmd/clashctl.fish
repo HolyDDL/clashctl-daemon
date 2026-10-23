@@ -55,6 +55,11 @@ function clashoff --description 'disable terminal proxy, optionally stopping the
 end
 
 function clashtui --description 'interactive management with terminal proxy synchronization'
+    if not test -f "$CLASHCTL_HOME/scripts/cmd/tui.sh"
+        echo 'TUI files are missing or the installation is out of date.' >&2
+        echo 'Run clashctl update, then reopen your terminal.' >&2
+        return 1
+    end
     if set -q argv[1]
         __clashctl_run clashtui $argv
         return $status
@@ -104,6 +109,12 @@ function clashctl
     end
 
     set -l target clash$sub
+    if not functions -q $target
+        if string match -rq '^[a-zA-Z0-9_-]+$' -- "$sub"; and test -f "$CLASHCTL_HOME/scripts/cmd/$sub.sh"
+            source "$CLASHCTL_HOME/scripts/cmd/clashctl.fish"
+            or return 1
+        end
+    end
     if not functions -q $target
         echo "Unknown subcommand: $sub" >&2
         echo "Use 'clashctl help' for usage information." >&2
