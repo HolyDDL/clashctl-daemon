@@ -229,7 +229,7 @@ _tui_input() {
     printf '\033[?25h\n%s (%s): ' "$(_tui_tr "$prompt")" "$(_tui_tr 'empty cancels')"
     _TUI_VALUE=''
     if [ "$secret" = true ]; then IFS= read -rs _TUI_VALUE || return 1; printf '\n'
-    else IFS= read -r _TUI_VALUE || return 1; fi
+    else _read_subscription_url _TUI_VALUE || return 1; fi
     [ -n "$_TUI_VALUE" ]
 }
 
@@ -314,7 +314,7 @@ _tui_subscriptions() {
         'Select node for current subscription' 'Select node with latency'; do
         case $_TUI_CHOICE in
         0) _tui_action clashsub list ;;
-        1) _tui_input 'Subscription URL' true && _tui_action clashsub add --use "$_TUI_VALUE" ;;
+        1) _tui_input 'Subscription URL' && _tui_action clashsub add --use "$_TUI_VALUE" ;;
         2) _tui_action clashsub use ;;
         3) _tui_action clashsub update --all ;;
         4) _tui_action clashsub del ;;

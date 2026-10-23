@@ -226,9 +226,11 @@ tunstatus() { return 1; }
                 expect('Number keys select immediately.')
                 send('2')
                 expect('empty cancels')
-                send('https://example.invalid/private-token\n')
+                send('\x1b[200~https://example.invalid/visible-token\x1b[201~')
+                expect('https://example.invalid/visible-token')
+                send('\n')
                 expect('Press any key to return')
-                assert b'private-token' not in transcript, 'secret input was echoed'
+                assert b'visible-token' in transcript, 'subscription URL was not echoed'
                 send('x')
                 expect('Number keys select immediately.')
                 send('3')
@@ -285,7 +287,7 @@ tunstatus() { return 1; }
     assert read(mixin)['mixed-port'] == 40125
     actions = (home / 'actions').read_text()
     assert 'start' in actions
-    assert 'sub:add --use https://example.invalid/private-token' in actions
+    assert 'sub:add --use https://example.invalid/visible-token' in actions
     assert 'sub:use' in actions
     assert 'node:use' in actions and 'node:use --delay' in actions
     assert (home / 'running').exists()
