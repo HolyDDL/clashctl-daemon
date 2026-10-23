@@ -19,9 +19,9 @@ _clashctl_run_in_bash() (
         _ui_error '未找到 Bash，请安装后重试'
         return 127
     }
-    # status 读取当前终端环境；只在子进程导出这些值，不改变父 Shell
+    # status 与 TUI 读取当前终端环境；只在子进程导出这些值，不改变父 Shell
     # 或其他命令使用代理变量的方式。
-    if [ "$func" = clashstatus ]; then
+    if [ "$func" = clashstatus ] || [ "$func" = _tui_session ]; then
         export http_proxy="${http_proxy:-}" HTTP_PROXY="${HTTP_PROXY:-}" \
             https_proxy="${https_proxy:-}" HTTPS_PROXY="${HTTPS_PROXY:-}" \
             all_proxy="${all_proxy:-}" ALL_PROXY="${ALL_PROXY:-}"

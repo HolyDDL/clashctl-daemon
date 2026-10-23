@@ -10,13 +10,31 @@ clashtui() {
     '') [ "$#" -eq 0 ] || return 1 ;;
     *) _ui_error 'Usage: clashctl tui'; return 1 ;;
     esac
-    if ! _clashctl_in_bash; then _clashctl_run_in_bash clashtui; return; fi
+    local result_file action='' rc=0
+    result_file=$(mktemp "${TMPDIR:-/tmp}/clashctl-tui.XXXXXX") || return 1
+    if _clashctl_in_bash; then
+        _tui_session "$result_file" || rc=$?
+    else
+        _clashctl_run_in_bash _tui_session "$result_file" || rc=$?
+    fi
+    IFS= read -r action <"$result_file" || true
+    command rm -f -- "$result_file"
+    # Read a fixed action, never execute Shell code written by the child UI.
+    case $action in
+    on) set_system_proxy || return 1 ;;
+    off) unset_system_proxy ;;
+    esac
+    return "$rc"
+}
+
+_tui_session() (
+    local _TUI_PROXY_RESULT=$1
     if [ ! -t 0 ] || [ ! -t 1 ] || [ "${TERM:-dumb}" = dumb ]; then
         _ui_error 'The TUI requires an interactive terminal (TERM must not be dumb).'
         return 1
     fi
-    (_tui_run)
-}
+    _tui_run
+)
 
 _tui_run() {
     local _TUI_STTY _TUI_CHOICE='' _TUI_VALUE='' _TUI_COLOR=false
@@ -28,7 +46,7 @@ _tui_run() {
     trap 'exit 129' HUP
     printf '\033[?1049h'
     while _tui_menu 'Overview' 'Kernel & startup' 'Subscriptions' 'Nodes & latency' \
-        'Proxy ports' 'Proxy settings' 'Dashboard & secret' 'Logs & diagnostics'; do
+        'Proxy ports' 'Proxy settings' 'Dashboard & secret' 'Logs & diagnostics' 'Terminal proxy'; do
         case $_TUI_CHOICE in
         0) _tui_kernel ;;
         1) _tui_subscriptions ;;
@@ -37,6 +55,7 @@ _tui_run() {
         4) _tui_settings ;;
         5) _tui_dashboard ;;
         6) _tui_diagnostics ;;
+        7) _tui_terminal_proxy ;;
         esac
     done
     return 0
@@ -46,7 +65,7 @@ _tui_run() {
 _tui_text() { LC_ALL=C printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177'; }
 
 _tui_header() {
-    local state mode='unknown' port='unknown' startup='unavailable' subscription http_address socks_address
+    local state mode='unknown' port='unknown' startup='unavailable' subscription http_address socks_address terminal_proxy=disabled
     detect_service_manager
     state=$(service_state 2>/dev/null) || state=unknown
     if [ -f "$CLASH_CONFIG_RUNTIME" ]; then
@@ -59,6 +78,7 @@ _tui_header() {
     systemd)
         startup=$(systemctl is-enabled "$CLASHCTL_KERNEL" 2>/dev/null) || startup=${startup:-unknown} ;;
     esac
+    [ -z "${http_proxy:-}${HTTP_PROXY:-}${https_proxy:-}${HTTPS_PROXY:-}${all_proxy:-}${ALL_PROXY:-}" ] || terminal_proxy=enabled
     subscription=$(_status_subscription_label)
     printf '\033[H\033[2J'
     if [ "$_TUI_COLOR" = true ]; then printf '\033[1;36m'; fi
@@ -66,8 +86,8 @@ _tui_header() {
     [ "$_TUI_COLOR" != true ] || printf '\033[0m'
     printf '  Kernel: %s    Mode: %s    Mixed port: %s\n' \
         "$(_tui_text "$state")" "$(_tui_text "$mode")" "$(_tui_text "$port")"
-    printf '  Service: %s    Login startup: %s\n\n' \
-        "$(_tui_text "$service_manager")" "$(_tui_text "$startup")"
+    printf '  Service: %s    Login startup: %s    Terminal proxy: %s\n\n' \
+        "$(_tui_text "$service_manager")" "$(_tui_text "$startup")" "$terminal_proxy"
     printf '  Subscription: %s\n' "$(_tui_text "$subscription")"
     if _proxy_addresses "$CLASH_CONFIG_RUNTIME" false 2>/dev/null; then
         printf '  HTTP: %s    SOCKS: %s\n' "${http_address:-Disabled}" "${socks_address:-Disabled}"
@@ -181,6 +201,35 @@ _tui_startup() {
     printf 'Starting the kernel through clashctl enables automatic startup again.\n'
 }
 
+_tui_terminal_proxy() {
+    while _tui_menu 'Terminal proxy' 'Enable proxy (start kernel if needed)' \
+        'Disable proxy (keep kernel running)' 'Disable proxy and stop kernel'; do
+        case $_TUI_CHOICE in
+        0) _tui_action _tui_proxy on ;;
+        1) _tui_action _tui_proxy off ;;
+        2) _tui_action _tui_proxy stop ;;
+        esac
+    done
+}
+
+_tui_proxy() {
+    local action=$1 rc=0
+    case $action in
+    on) clashon || return 1 ;;
+    off) clashoff || return 1 ;;
+    stop) clashoff --stop || rc=$?; action=off ;;
+    *) return 1 ;;
+    esac
+    printf '%s\n' "$action" >"$_TUI_PROXY_RESULT" || return 1
+    printf 'The proxy selection will apply to this terminal when you exit the TUI.\n'
+    return "$rc"
+}
+
+# Fish uses the existing escaping routine to export values into its own process.
+_tui_proxy_env_fish() { set_system_proxy && _dump_proxy_env_fish; }
+
+_tui_subscription_node() { clashstart && clashnode use "$@"; }
+
 _tui_nodes() {
     while _tui_menu 'Nodes & latency' 'List policy groups' 'Switch node' 'Switch node with latency' 'Test group latency'; do
         case $_TUI_CHOICE in
@@ -194,7 +243,8 @@ _tui_nodes() {
 
 _tui_subscriptions() {
     while _tui_menu 'Subscriptions' 'List subscriptions' 'Add & activate subscription' \
-        'Switch subscription' 'Update all subscriptions' 'Delete subscription' 'Subscription log'; do
+        'Switch subscription' 'Update all subscriptions' 'Delete subscription' 'Subscription log' \
+        'Select node for current subscription' 'Select node with latency'; do
         case $_TUI_CHOICE in
         0) _tui_action clashsub list ;;
         1) _tui_input 'Subscription URL' true && _tui_action clashsub add --use "$_TUI_VALUE" ;;
@@ -202,6 +252,8 @@ _tui_subscriptions() {
         3) _tui_action clashsub update --all ;;
         4) _tui_action clashsub del ;;
         5) _tui_action clashsub log ;;
+        6) _tui_action _tui_subscription_node ;;
+        7) _tui_action _tui_subscription_node --delay ;;
         esac
     done
 }

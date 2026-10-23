@@ -54,6 +54,38 @@ function clashoff --description 'disable terminal proxy, optionally stopping the
     __clashctl_run clashoff $argv
 end
 
+function clashtui --description 'interactive management with terminal proxy synchronization'
+    if set -q argv[1]
+        __clashctl_run clashtui $argv
+        return $status
+    end
+    set -l result (mktemp)
+    or return 1
+    __clashctl_run _tui_session "$result"
+    set -l tui_rc $status
+    set -l action (cat -- "$result")
+    rm -f -- "$result"
+    switch "$action"
+        case on
+            set -l proxy_file (mktemp)
+            or return 1
+            __clashctl_run _tui_proxy_env_fish >"$proxy_file"
+            set -l proxy_rc $status
+            if test $proxy_rc -eq 0
+                source "$proxy_file"
+                set proxy_rc $status
+            end
+            rm -f -- "$proxy_file"
+            if test $proxy_rc -ne 0
+                return $proxy_rc
+            end
+        case off
+            rm -f -- (__clashctl_state_path)
+            set -e http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY no_proxy NO_PROXY
+    end
+    return $tui_rc
+end
+
 function clashctl
     set -l sub help
     if set -q argv[1]
@@ -85,7 +117,7 @@ if test -d $CLASHCTL_HOME/scripts/cmd
     for cmd_file in $CLASHCTL_HOME/scripts/cmd/*.sh
         set -l base (basename -- $cmd_file .sh)
         switch $base
-            case clashctl on off
+            case clashctl on off tui
                 continue
         end
         set -l fn clash$base

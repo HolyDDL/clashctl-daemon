@@ -35,8 +35,8 @@ with tempfile.TemporaryDirectory(prefix='clashctl-tui-') as work:
 detect_service_manager() { service_manager=systemd-user; }
 service_state() { if [ -f "$CLASHCTL_HOME/running" ]; then echo running; else echo stopped; fi; }
 service_is_active() { [ -f "$CLASHCTL_HOME/running" ]; }
-service_start() { echo start >>"$CLASHCTL_HOME/actions"; touch "$CLASHCTL_HOME/running"; }
-service_stop() { echo stop >>"$CLASHCTL_HOME/actions"; command rm -f "$CLASHCTL_HOME/running"; }
+service_start() { [ ! -f "$CLASHCTL_HOME/fail-start" ] || return 1; echo start >>"$CLASHCTL_HOME/actions"; touch "$CLASHCTL_HOME/running"; }
+service_stop() { [ ! -f "$CLASHCTL_HOME/fail-stop" ] || return 1; echo stop >>"$CLASHCTL_HOME/actions"; command rm -f "$CLASHCTL_HOME/running"; }
 service_enable() { echo enable >>"$CLASHCTL_HOME/actions"; }
 service_disable() { echo disable >>"$CLASHCTL_HOME/actions"; }
 systemctl() { [ "$2" = is-enabled ] && { echo disabled; return 1; }; return 99; }
@@ -44,6 +44,8 @@ _kernel_start() { service_start; }
 tunstatus() { return 1; }
 ''')
     (home / 'scripts/cmd/zz-fixture.sh').write_text('clashsub() {\n    printf \'sub:%s\\n\' "$*" >>"$CLASHCTL_HOME/actions"\n    echo \'Subscription operation complete (fixture).\'\n}\n')
+    with (home / 'scripts/cmd/zz-fixture.sh').open('a') as fixture:
+        fixture.write('clashnode() {\n    printf \'node:%s\\n\' "$*" >>"$CLASHCTL_HOME/actions"\n    echo \'Node selected (fixture).\'\n}\n')
     env = dict(os.environ, CLASHCTL_HOME=str(home), CLASHCTL_SRC=str(home),
                TERM='xterm-256color', NO_COLOR='1')
     config = {'mixed-port': 37700, 'allow-lan': False, 'mode': 'direct',
@@ -93,15 +95,19 @@ tunstatus() { return 1; }
 
     # Drive the real UI through a PTY. Verify keyboard navigation, saved ports,
     # start/stop dispatch, normal exit and signal cleanup without host services.
-    def session(shell='bash', interrupt=False):
+    def session(shell='bash', interrupt=False, proxy=None):
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 35, 110, 0, 0))
         original = termios.tcgetattr(slave)
+        variables = ['http_proxy', 'HTTP_PROXY', 'https_proxy', 'HTTPS_PROXY',
+                     'all_proxy', 'ALL_PROXY', 'no_proxy', 'NO_PROXY']
+        after = ' printf "AFTER|' + '|'.join(['%s'] * len(variables)) + '\\n" ' + ' '.join('"$' + v + '"' for v in variables)
         if shell == 'fish':
-            command = ['fish', '--no-config', '-c', 'source "$CLASHCTL_HOME/scripts/cmd/clashctl.fish"; clashctl tui']
+            command = ['fish', '--no-config', '-c', 'source "$CLASHCTL_HOME/scripts/cmd/clashctl.fish"; clashctl tui; set -l rc $status; ' + after + '; exit $rc']
         else:
-            command = [shell, '-f' if shell == 'zsh' else '--noprofile', '-c', source + 'clashctl tui']
-        process = subprocess.Popen(command, env=env, stdin=slave, stdout=slave, stderr=slave,
+            command = [shell, '-f' if shell == 'zsh' else '--noprofile', '-c', source + 'clashctl tui; rc=$?; ' + after + '; exit "$rc"']
+        session_env = dict(env, **{v: 'before-' + v for v in variables})
+        process = subprocess.Popen(command, env=session_env, stdin=slave, stdout=slave, stderr=slave,
                                    start_new_session=True)
         output = b''
         transcript = b''
@@ -126,6 +132,15 @@ tunstatus() { return 1; }
             expect('Number keys select immediately.')
             if interrupt:
                 os.killpg(process.pid, signal.SIGTERM)
+            elif proxy is not None:
+                send('8')
+                expect('Number keys select immediately.')
+                key = {'on': '1', 'failed-on': '1', 'off': '2', 'stop': '3', 'failed-stop': '3'}[proxy]
+                send(key)
+                expect('Press any key to return')
+                send('x')
+                expect('Number keys select immediately.')
+                send('qq')
             elif shell == 'bash':
                 send('4')
                 expect('Proxy ports')
@@ -171,6 +186,16 @@ tunstatus() { return 1; }
                 expect('Press any key to return')
                 send('x')
                 expect('Number keys select immediately.')
+                send('7')
+                expect('Node selected (fixture).')
+                expect('Press any key to return')
+                send('x')
+                expect('Number keys select immediately.')
+                send('8')
+                expect('Node selected (fixture).')
+                expect('Press any key to return')
+                send('x')
+                expect('Number keys select immediately.')
                 send('qq')
             else:
                 send('q')
@@ -188,6 +213,17 @@ tunstatus() { return 1; }
                 output += chunk
             assert b'\x1b[?1049l' in output, output[-1000:]
             assert termios.tcgetattr(slave) == original, 'terminal mode was not restored'
+            if not interrupt:
+                combined = transcript + output
+                if proxy == 'on':
+                    port = read(runtime)['mixed-port']
+                    expected = [f'http://127.0.0.1:{port}'] * 4 + [f'socks5h://127.0.0.1:{port}'] * 2 + ['localhost,127.0.0.1,::1'] * 2
+                elif proxy in ('off', 'stop', 'failed-stop'):
+                    expected = [''] * len(variables)
+                else:
+                    expected = ['before-' + v for v in variables]
+                marker = ('AFTER|' + '|'.join(expected)).encode()
+                assert marker in combined, (shell, proxy, marker, combined[-1500:])
         finally:
             if process.poll() is None:
                 os.killpg(process.pid, signal.SIGKILL)
@@ -200,10 +236,26 @@ tunstatus() { return 1; }
     assert 'start' in actions
     assert 'sub:add --use https://example.invalid/private-token' in actions
     assert 'sub:use' in actions
-    assert not (home / 'running').exists()
+    assert 'node:use' in actions and 'node:use --delay' in actions
+    assert (home / 'running').exists()
     for shell in ('zsh', 'fish'):
         assert shutil.which(shell), f'{shell} is required'
         session(shell)
     session(interrupt=True)
+    for shell in ('bash', 'zsh', 'fish'):
+        session(shell, proxy='on')
+        assert (home / 'running').exists()
+        session(shell, proxy='off')
+        assert (home / 'running').exists(), 'off unexpectedly stopped the kernel'
+        session(shell, proxy='stop')
+        assert not (home / 'running').exists()
+        (home / 'fail-start').touch()
+        session(shell, proxy='failed-on')
+        (home / 'fail-start').unlink()
+        (home / 'running').touch()
+        (home / 'fail-stop').touch()
+        session(shell, proxy='failed-stop')
+        assert (home / 'running').exists()
+        (home / 'fail-stop').unlink()
 print('tui: ok')
 PY
